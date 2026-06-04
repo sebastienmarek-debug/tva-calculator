@@ -1,9 +1,11 @@
 import os
 import json
 import uuid
+import re
 from flask import Flask, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 from parser import parse_pdf_reliable, Transaction
+from toggl_parser import parse_toggl_pdf
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
@@ -31,8 +33,31 @@ def tx_to_dict(tx: Transaction, idx: int) -> dict:
 
 
 @app.route("/")
-def index():
-    return render_template("index.html")
+def home():
+    return render_template("home.html")
+
+@app.route("/tva")
+def tva():
+    return render_template("tva.html")
+
+@app.route("/facturation")
+def facturation():
+    return render_template("facturation.html")
+
+@app.route("/facturation/upload", methods=["POST"])
+def facturation_upload():
+    if "file" not in request.files:
+        return jsonify({"error": "Aucun fichier"}), 400
+    f = request.files["file"]
+    if not f.filename.endswith(".pdf"):
+        return jsonify({"error": "Fichier PDF requis"}), 400
+    path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+    f.save(path)
+    try:
+        clients = parse_toggl_pdf(path)
+    except Exception as e:
+        return jsonify({"error": f"Erreur de parsing: {str(e)}"}), 500
+    return jsonify({"clients": clients})
 
 
 @app.route("/upload", methods=["POST"])
