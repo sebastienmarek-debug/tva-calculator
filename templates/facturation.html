@@ -231,6 +231,12 @@
 
       if (data.error) { showError(data.error); return; }
 
+      // Affiche debug temporairement
+      if (data._debug) {
+        const d = data._debug;
+        showError(`🔍 DEBUG — ${d.nb_entries} entrées | clients Toggl: ${JSON.stringify(d.client_map)} | projet sample: ${JSON.stringify(d.project_sample)} | entrée sample: ${JSON.stringify(d.sample_entry)}`);
+      }
+
       clientsData = data.clients;
       const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
       render(`${monthNames[m-1]} ${year}`);
