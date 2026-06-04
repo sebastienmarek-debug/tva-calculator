@@ -1,0 +1,358 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculateur TVA — Relevé bancaire</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; color: #1d1d1f; }
+
+    header {
+      background: #1d1d1f; color: white; padding: 1rem 2rem;
+      display: flex; align-items: center; justify-content: space-between;
+    }
+    header h1 { font-size: 1.2rem; font-weight: 600; }
+    header .badge { background: #0071e3; border-radius: 6px; padding: 2px 8px; font-size: 0.75rem; }
+
+    .container { max-width: 1200px; margin: 0 auto; padding: 2rem; }
+
+    /* Upload zone */
+    #upload-zone {
+      border: 2px dashed #c7c7cc; border-radius: 16px; padding: 3rem;
+      text-align: center; cursor: pointer; transition: all 0.2s;
+      background: white; margin-bottom: 2rem;
+    }
+    #upload-zone:hover, #upload-zone.drag-over { border-color: #0071e3; background: #f0f6ff; }
+    #upload-zone .icon { font-size: 3rem; margin-bottom: 1rem; }
+    #upload-zone p { color: #6e6e73; margin-top: 0.5rem; font-size: 0.9rem; }
+    #upload-zone strong { color: #1d1d1f; }
+    #file-input { display: none; }
+
+    /* Summary cards */
+    #summary { display: none; margin-bottom: 2rem; }
+    .summary-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; }
+    .card {
+      background: white; border-radius: 16px; padding: 1.5rem;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.06);
+    }
+    .card .label { font-size: 0.8rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.05em; }
+    .card .value { font-size: 2rem; font-weight: 700; margin-top: 0.5rem; }
+    .card.collected .value { color: #34c759; }
+    .card.deductible .value { color: #0071e3; }
+    .card.due .value { color: #ff3b30; }
+    .card.due.positive .value { color: #34c759; }
+    .pending-alert {
+      background: #fff3cd; border: 1px solid #ffc107; border-radius: 12px;
+      padding: 1rem 1.5rem; margin-top: 1rem; display: flex; align-items: center; gap: 0.75rem;
+    }
+    .pending-alert .icon { font-size: 1.2rem; }
+
+    /* Filters */
+    .filters { display: flex; gap: 0.5rem; margin-bottom: 1rem; flex-wrap: wrap; }
+    .filter-btn {
+      padding: 0.4rem 1rem; border-radius: 20px; border: 1px solid #d1d1d6;
+      background: white; cursor: pointer; font-size: 0.85rem; transition: all 0.15s;
+    }
+    .filter-btn.active { background: #1d1d1f; color: white; border-color: #1d1d1f; }
+
+    /* Table */
+    #transactions { display: none; }
+    .tx-table { width: 100%; border-collapse: collapse; background: white; border-radius: 16px; overflow: hidden; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .tx-table th { background: #f5f5f7; padding: 0.75rem 1rem; text-align: left; font-size: 0.8rem; text-transform: uppercase; letter-spacing: 0.05em; color: #6e6e73; }
+    .tx-table td { padding: 0.75rem 1rem; border-bottom: 1px solid #f5f5f7; font-size: 0.9rem; vertical-align: middle; }
+    .tx-table tr:last-child td { border-bottom: none; }
+    .tx-table tr:hover td { background: #fafafa; }
+
+    .badge-status {
+      display: inline-block; padding: 2px 8px; border-radius: 6px; font-size: 0.75rem; font-weight: 500;
+    }
+    .badge-collected { background: #d1f2dc; color: #1a7f3c; }
+    .badge-deductible { background: #d0e8ff; color: #0040a0; }
+    .badge-exempt { background: #e5e5ea; color: #6e6e73; }
+    .badge-pending { background: #fff3cd; color: #856404; }
+
+    .amount { font-variant-numeric: tabular-nums; }
+    .debit { color: #ff3b30; }
+    .credit { color: #34c759; }
+    .tva-amount { font-weight: 600; }
+
+    .btn-validate {
+      background: #0071e3; color: white; border: none; border-radius: 8px;
+      padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.8rem;
+    }
+    .btn-validate:hover { background: #0058b0; }
+
+    /* Modal */
+    .modal-overlay {
+      display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.4);
+      z-index: 100; align-items: center; justify-content: center;
+    }
+    .modal-overlay.open { display: flex; }
+    .modal {
+      background: white; border-radius: 20px; padding: 2rem; width: 500px; max-width: 95vw;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.2);
+    }
+    .modal h2 { font-size: 1.1rem; margin-bottom: 0.5rem; }
+    .modal .tx-label { color: #6e6e73; font-size: 0.9rem; margin-bottom: 1.5rem; padding-bottom: 1rem; border-bottom: 1px solid #f5f5f7; }
+    .modal .tx-amount-info { font-size: 1.1rem; font-weight: 600; margin-bottom: 1.5rem; }
+    .form-group { margin-bottom: 1rem; }
+    .form-group label { display: block; font-size: 0.85rem; color: #6e6e73; margin-bottom: 0.4rem; }
+    .form-group select, .form-group input, .form-group textarea {
+      width: 100%; padding: 0.6rem 0.8rem; border: 1px solid #d1d1d6; border-radius: 10px;
+      font-size: 0.9rem; font-family: inherit;
+    }
+    .modal-actions { display: flex; gap: 0.75rem; margin-top: 1.5rem; justify-content: flex-end; }
+    .btn-cancel { padding: 0.6rem 1.2rem; border-radius: 10px; border: 1px solid #d1d1d6; background: white; cursor: pointer; }
+    .btn-save { padding: 0.6rem 1.2rem; border-radius: 10px; border: none; background: #0071e3; color: white; cursor: pointer; font-weight: 500; }
+
+    .loading { text-align: center; padding: 3rem; color: #6e6e73; }
+    .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e5e5ea; border-top-color: #0071e3; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>📊 Calculateur TVA Bancaire</h1>
+    <span class="badge">TVA sur encaissements</span>
+  </header>
+
+  <div class="container">
+    <!-- Upload -->
+    <div id="upload-zone" onclick="document.getElementById('file-input').click()">
+      <div class="icon">📄</div>
+      <strong>Déposez votre relevé bancaire PDF</strong>
+      <p>Cliquez ou glissez-déposez un fichier PDF (Crédit Mutuel)</p>
+      <input type="file" id="file-input" accept=".pdf">
+    </div>
+
+    <!-- Summary -->
+    <div id="summary">
+      <div class="summary-cards">
+        <div class="card collected">
+          <div class="label">TVA collectée (crédits)</div>
+          <div class="value" id="tva-collected">—</div>
+          <div style="font-size:0.8rem;color:#6e6e73;margin-top:0.25rem">sur encaissements TTC</div>
+        </div>
+        <div class="card deductible">
+          <div class="label">TVA déductible (débits pro)</div>
+          <div class="value" id="tva-deductible">—</div>
+          <div style="font-size:0.8rem;color:#6e6e73;margin-top:0.25rem">achats professionnels</div>
+        </div>
+        <div class="card due" id="card-due">
+          <div class="label">TVA nette à déclarer</div>
+          <div class="value" id="tva-due">—</div>
+          <div style="font-size:0.8rem;color:#6e6e73;margin-top:0.25rem">collectée − déductible</div>
+        </div>
+      </div>
+      <div class="pending-alert" id="pending-alert" style="display:none">
+        <span class="icon">⚠️</span>
+        <span><strong id="pending-count">0</strong> transaction(s) à valider — cliquez sur "Valider" pour les classifier</span>
+      </div>
+    </div>
+
+    <!-- Transactions -->
+    <div id="transactions">
+      <div class="filters">
+        <button class="filter-btn active" data-filter="all">Toutes</button>
+        <button class="filter-btn" data-filter="collected">Crédits (TVA collectée)</button>
+        <button class="filter-btn" data-filter="deductible">Débits déductibles</button>
+        <button class="filter-btn" data-filter="exempt">Exonérés</button>
+        <button class="filter-btn" data-filter="pending">À valider ⚠️</button>
+      </div>
+      <table class="tx-table">
+        <thead>
+          <tr>
+            <th>Date</th>
+            <th>Opération</th>
+            <th>Débit</th>
+            <th>Crédit</th>
+            <th>Statut TVA</th>
+            <th>Taux</th>
+            <th>Montant TVA</th>
+            <th>Note</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody id="tx-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- Modal -->
+  <div class="modal-overlay" id="modal">
+    <div class="modal">
+      <h2>Classifier la transaction</h2>
+      <div class="tx-label" id="modal-label"></div>
+      <div class="tx-amount-info" id="modal-amount"></div>
+      <input type="hidden" id="modal-tx-id">
+
+      <div class="form-group">
+        <label>Statut TVA</label>
+        <select id="modal-status">
+          <option value="collected">TVA collectée (crédit client)</option>
+          <option value="deductible">TVA déductible (achat pro)</option>
+          <option value="exempt">Exonéré (salaire, impôts, assurance…)</option>
+        </select>
+      </div>
+      <div class="form-group" id="modal-rate-group">
+        <label>Taux TVA</label>
+        <select id="modal-rate">
+          <option value="0.20">20%</option>
+          <option value="0.10">10%</option>
+          <option value="0.055">5.5%</option>
+          <option value="0">0% (exonéré)</option>
+        </select>
+      </div>
+      <div class="form-group">
+        <label>Note</label>
+        <textarea id="modal-note" rows="2" style="resize:vertical"></textarea>
+      </div>
+
+      <div class="modal-actions">
+        <button class="btn-cancel" onclick="closeModal()">Annuler</button>
+        <button class="btn-save" onclick="saveValidation()">Enregistrer</button>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    let sessionId = null;
+    let transactions = [];
+    let currentFilter = "all";
+
+    const fmt = (v) => v != null ? v.toFixed(2).replace('.', ',') + ' €' : '—';
+    const fmtPct = (v) => v ? (v * 100).toFixed(0) + '%' : '—';
+
+    // Upload
+    const uploadZone = document.getElementById('upload-zone');
+    const fileInput = document.getElementById('file-input');
+
+    uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
+    uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
+    uploadZone.addEventListener('drop', e => {
+      e.preventDefault();
+      uploadZone.classList.remove('drag-over');
+      const file = e.dataTransfer.files[0];
+      if (file) uploadFile(file);
+    });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) uploadFile(fileInput.files[0]); });
+
+    async function uploadFile(file) {
+      uploadZone.innerHTML = `<div class="spinner"></div><p>Analyse du relevé en cours…</p>`;
+      const fd = new FormData();
+      fd.append('file', file);
+      const res = await fetch('/upload', { method: 'POST', body: fd });
+      const data = await res.json();
+      if (data.error) { alert(data.error); location.reload(); return; }
+      sessionId = data.session_id;
+      transactions = data.transactions;
+      renderAll();
+    }
+
+    function renderAll() {
+      document.getElementById('summary').style.display = 'block';
+      document.getElementById('transactions').style.display = 'block';
+      uploadZone.style.display = 'none';
+      renderTable();
+      updateSummary();
+    }
+
+    function renderTable() {
+      const tbody = document.getElementById('tx-body');
+      const filtered = currentFilter === 'all' ? transactions : transactions.filter(t => t.tva_status === currentFilter);
+
+      tbody.innerHTML = filtered.map(tx => `
+        <tr data-id="${tx.id}">
+          <td>${tx.date}</td>
+          <td style="max-width:280px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.label}">${tx.label}</td>
+          <td class="amount debit">${tx.debit != null ? fmt(tx.debit) : ''}</td>
+          <td class="amount credit">${tx.credit != null ? fmt(tx.credit) : ''}</td>
+          <td><span class="badge-status badge-${tx.tva_status}">${statusLabel(tx.tva_status)}</span></td>
+          <td>${tx.tva_rate ? fmtPct(tx.tva_rate) : '—'}</td>
+          <td class="amount tva-amount" style="color:${tx.tva_status==='collected'?'#1a7f3c':tx.tva_status==='deductible'?'#0040a0':'#6e6e73'}">${tx.tva_amount ? fmt(tx.tva_amount) : '—'}</td>
+          <td style="font-size:0.8rem;color:#6e6e73;max-width:180px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${tx.note}">${tx.note}</td>
+          <td><button class="btn-validate" onclick="openModal(${tx.id})">Valider</button></td>
+        </tr>
+      `).join('');
+    }
+
+    function statusLabel(s) {
+      return { collected: 'Collectée', deductible: 'Déductible', exempt: 'Exonéré', pending: 'À valider' }[s] || s;
+    }
+
+    async function updateSummary() {
+      const res = await fetch(`/summary/${sessionId}`);
+      const data = await res.json();
+      document.getElementById('tva-collected').textContent = fmt(data.tva_collected);
+      document.getElementById('tva-deductible').textContent = fmt(data.tva_deductible);
+      document.getElementById('tva-due').textContent = fmt(Math.abs(data.tva_due)) + (data.tva_due < 0 ? ' (crédit)' : '');
+      const cardDue = document.getElementById('card-due');
+      cardDue.classList.toggle('positive', data.tva_due <= 0);
+      const alert = document.getElementById('pending-alert');
+      if (data.pending_count > 0) {
+        alert.style.display = 'flex';
+        document.getElementById('pending-count').textContent = data.pending_count;
+      } else {
+        alert.style.display = 'none';
+      }
+    }
+
+    // Filters
+    document.querySelectorAll('.filter-btn').forEach(btn => {
+      btn.addEventListener('click', () => {
+        document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
+        btn.classList.add('active');
+        currentFilter = btn.dataset.filter;
+        renderTable();
+      });
+    });
+
+    // Modal
+    function openModal(id) {
+      const tx = transactions.find(t => t.id === id);
+      document.getElementById('modal-tx-id').value = id;
+      document.getElementById('modal-label').textContent = tx.label;
+      document.getElementById('modal-amount').textContent =
+        tx.credit != null ? `Crédit : ${fmt(tx.credit)}` : `Débit : ${fmt(tx.debit)}`;
+      document.getElementById('modal-status').value = tx.tva_status === 'pending' ? 'exempt' : tx.tva_status;
+      document.getElementById('modal-rate').value = tx.tva_rate || 0.20;
+      document.getElementById('modal-note').value = tx.note || '';
+      document.getElementById('modal').classList.add('open');
+    }
+
+    function closeModal() {
+      document.getElementById('modal').classList.remove('open');
+    }
+
+    document.getElementById('modal-status').addEventListener('change', function() {
+      document.getElementById('modal-rate-group').style.display = this.value === 'exempt' ? 'none' : '';
+    });
+
+    async function saveValidation() {
+      const id = parseInt(document.getElementById('modal-tx-id').value);
+      const status = document.getElementById('modal-status').value;
+      const rate = parseFloat(document.getElementById('modal-rate').value);
+      const note = document.getElementById('modal-note').value;
+
+      const res = await fetch('/validate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ session_id: sessionId, id, tva_status: status, tva_rate: rate, note })
+      });
+      const updated = await res.json();
+      const idx = transactions.findIndex(t => t.id === id);
+      if (idx >= 0) transactions[idx] = updated;
+
+      closeModal();
+      renderTable();
+      updateSummary();
+    }
+
+    // Close modal on overlay click
+    document.getElementById('modal').addEventListener('click', function(e) {
+      if (e.target === this) closeModal();
+    });
+  </script>
+</body>
+</html>
