@@ -76,18 +76,23 @@ def facturation_toggl():
     auth = (token, "api_token")
     headers = {"Content-Type": "application/json"}
 
+    def toggl_get(url, **kwargs):
+        r = http_requests.get(url, auth=auth, headers=headers, timeout=10, **kwargs)
+        return r.json() if r.text.strip() else None
+
     # Get workspace ID
     try:
-        me_res = http_requests.get("https://api.track.toggl.com/api/v9/me",
-                                   auth=auth, headers=headers, timeout=10)
-        if me_res.status_code == 403:
+        me = toggl_get("https://api.track.toggl.com/api/v9/me")
+        if me is None:
+            return jsonify({"error": "Toggl ne répond pas — réessayez dans quelques secondes"}), 503
+        if isinstance(me, dict) and me.get("message") == "Unauthorized":
             return jsonify({"error": "Token invalide — vérifiez votre token API Toggl"}), 403
-        me = me_res.json()
-        workspace_id = me.get("default_workspace_id")
+        workspace_id = me.get("default_workspace_id") if me else None
         if not workspace_id:
-            workspaces = http_requests.get("https://api.track.toggl.com/api/v9/workspaces",
-                                           auth=auth, headers=headers, timeout=10).json()
-            workspace_id = workspaces[0]["id"]
+            workspaces = toggl_get("https://api.track.toggl.com/api/v9/workspaces") or []
+            workspace_id = workspaces[0]["id"] if workspaces else None
+        if not workspace_id:
+            return jsonify({"error": "Impossible de trouver votre workspace Toggl"}), 500
     except Exception as e:
         return jsonify({"error": f"Erreur connexion Toggl: {str(e)}"}), 500
 
