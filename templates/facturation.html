@@ -198,14 +198,38 @@
     }
     setMode('api');
 
+    // ── Toggl meta cache (workspace + clients + projects) ─────────────────
+    const META_KEY = 'toggl_meta_v1';
+
+    function getMeta() {
+      try { return JSON.parse(localStorage.getItem(META_KEY) || 'null'); } catch { return null; }
+    }
+    function saveMeta(meta) {
+      localStorage.setItem(META_KEY, JSON.stringify(meta));
+    }
+
+    async function ensureMeta(token) {
+      const cached = getMeta();
+      if (cached && cached.token === token) return { ok: true, meta: cached };
+
+      const res = await fetch('/facturation/toggl/meta', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (data.error) return { ok: false, error: data.error };
+      saveMeta({ token, ...data });
+      return { ok: true, meta: { token, ...data } };
+    }
+
     // ── Toggl API fetch ────────────────────────────────────────────────────
     async function fetchToggl() {
       const token = document.getElementById('toggl-token').value.trim();
-      const month = document.getElementById('toggl-month').value; // YYYY-MM
+      const month = document.getElementById('toggl-month').value;
       if (!token) { showError('Veuillez entrer votre token API Toggl.'); return; }
       if (!month) { showError('Veuillez sélectionner un mois.'); return; }
 
-      // Save token
       localStorage.setItem('toggl_api_token', token);
       document.getElementById('token-saved').style.display = 'block';
 
@@ -219,23 +243,30 @@
       btn.innerHTML = '<span class="spinner"></span>Chargement…';
       hideError();
 
+      // Step 1: get meta (cached or 1 API call)
+      btn.innerHTML = '<span class="spinner"></span>Connexion Toggl…';
+      const { ok, meta, error } = await ensureMeta(token);
+      if (!ok) { showError(error); btn.disabled = false; btn.textContent = 'Récupérer'; return; }
+
+      // Step 2: fetch time entries only
+      btn.innerHTML = '<span class="spinner"></span>Récupération des entrées…';
       const res = await fetch('/facturation/toggl', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token, start_date: start, end_date: end }),
+        body: JSON.stringify({
+          token,
+          start_date: start,
+          end_date: end,
+          workspace_id: meta.workspace_id,
+          client_map: meta.client_map,
+          project_map: meta.project_map,
+        }),
       });
       const data = await res.json();
-
       btn.disabled = false;
       btn.textContent = 'Récupérer';
 
       if (data.error) { showError(data.error); return; }
-
-      // Affiche debug temporairement
-      if (data._debug) {
-        const d = data._debug;
-        showError(`🔍 DEBUG — ${d.nb_entries} entrées | clients Toggl: ${JSON.stringify(d.client_map)} | projet sample: ${JSON.stringify(d.project_sample)} | entrée sample: ${JSON.stringify(d.sample_entry)}`);
-      }
 
       clientsData = data.clients;
       const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];

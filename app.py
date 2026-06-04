@@ -62,16 +62,13 @@ def facturation_upload():
     return jsonify({"clients": clients})
 
 
-@app.route("/facturation/toggl", methods=["POST"])
-def facturation_toggl():
-    """Fetch Toggl report directly via API using user's token."""
+@app.route("/facturation/toggl/meta", methods=["POST"])
+def facturation_toggl_meta():
+    """Fetch workspace_id, clients and projects — called once and cached in browser."""
     data = request.json
     token = data.get("token", "").strip()
-    start_date = data.get("start_date")  # YYYY-MM-DD
-    end_date = data.get("end_date")      # YYYY-MM-DD
-
-    if not token or not start_date or not end_date:
-        return jsonify({"error": "Token, start_date et end_date requis"}), 400
+    if not token:
+        return jsonify({"error": "Token requis"}), 400
 
     auth = (token, "api_token")
     headers = {"Content-Type": "application/json"}
@@ -86,76 +83,89 @@ def facturation_toggl():
         r = http_requests.get(url, auth=auth, headers=headers, timeout=15, **kwargs)
         return r.status_code, safe_json(r), r.text[:300]
 
-    # Get workspace ID
-    try:
-        status, me, raw = toggl_get("https://api.track.toggl.com/api/v9/me")
-        if status == 403 or (isinstance(me, dict) and "Unauthorized" in str(me)):
-            return jsonify({"error": "Token invalide — vérifiez votre token API Toggl"}), 403
-        if me is None or not isinstance(me, dict):
-            return jsonify({"error": f"Toggl /me a répondu HTTP {status} : {raw}"}), 503
-        workspace_id = me.get("default_workspace_id")
-        if not workspace_id:
-            status2, wks, raw2 = toggl_get("https://api.track.toggl.com/api/v9/workspaces")
-            workspace_id = wks[0]["id"] if wks else None
-        if not workspace_id:
-            return jsonify({"error": "Impossible de trouver votre workspace Toggl"}), 500
-    except Exception as e:
-        return jsonify({"error": f"Erreur connexion Toggl: {str(e)}"}), 500
+    status, me, raw = toggl_get("https://api.track.toggl.com/api/v9/me")
+    if status == 402:
+        import re as _re
+        reset = _re.search(r'reset in (\d+) seconds', raw or "")
+        mins = round(int(reset.group(1)) / 60) if reset else "?"
+        return jsonify({"error": f"Limite API Toggl atteinte — réessayez dans ~{mins} minutes"}), 429
+    if status == 403 or not isinstance(me, dict):
+        return jsonify({"error": f"Token invalide ou Toggl inaccessible (HTTP {status})"}), 403
 
-    from collections import defaultdict
+    workspace_id = me.get("default_workspace_id")
 
-    # Fetch clients map: id → name
     _, raw_clients, _ = toggl_get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/clients")
-    client_map = {c["id"]: c["name"].upper().strip() for c in (raw_clients or [])} if isinstance(raw_clients, list) else {}
+    client_map = {str(c["id"]): c["name"] for c in (raw_clients or [])} if isinstance(raw_clients, list) else {}
 
-    # Fetch projects map: project_id → {client_id, name}
     _, raw_projects, _ = toggl_get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects")
-    project_map = {p["id"]: {"client_id": p.get("client_id"), "name": p.get("name", "")} for p in (raw_projects or [])} if isinstance(raw_projects, list) else {}
+    project_map = {str(p["id"]): {"client_id": str(p["client_id"]) if p.get("client_id") else None, "name": p.get("name", "")} for p in (raw_projects or [])} if isinstance(raw_projects, list) else {}
 
-    # Fetch all time entries for the period (free API)
+    return jsonify({"workspace_id": workspace_id, "client_map": client_map, "project_map": project_map})
+
+
+@app.route("/facturation/toggl", methods=["POST"])
+def facturation_toggl():
+    """Fetch time entries only — workspace/clients/projects come cached from browser."""
+    from collections import defaultdict
+    data = request.json
+    token        = data.get("token", "").strip()
+    start_date   = data.get("start_date")
+    end_date     = data.get("end_date")
+    workspace_id = data.get("workspace_id")
+    client_map   = data.get("client_map", {})   # {str(id): name}
+    project_map  = data.get("project_map", {})  # {str(id): {client_id, name}}
+
+    if not all([token, start_date, end_date, workspace_id]):
+        return jsonify({"error": "Token, dates et workspace_id requis"}), 400
+
+    auth = (token, "api_token")
+    headers = {"Content-Type": "application/json"}
+
+    # Single API call: time entries for the period
     try:
         r = http_requests.get(
             "https://api.track.toggl.com/api/v9/me/time_entries",
             auth=auth, headers=headers, timeout=15,
-            params={"start_date": start_date + "T00:00:00Z", "end_date": end_date + "T23:59:59Z"},
+            params={"start_date": start_date + "T00:00:00Z",
+                    "end_date":   end_date   + "T23:59:59Z"},
         )
+        if r.status_code == 402:
+            reset = re.search(r'reset in (\d+) seconds', r.text or "")
+            mins = round(int(reset.group(1)) / 60) if reset else "?"
+            return jsonify({"error": f"Limite API Toggl atteinte — réessayez dans ~{mins} minutes"}), 429
         if r.status_code != 200:
-            return jsonify({"error": f"Toggl time_entries a répondu HTTP {r.status_code} : {r.text[:200]}"}), 500
-        entries = safe_json(r) or []
+            return jsonify({"error": f"Toggl a répondu HTTP {r.status_code} : {r.text[:200]}"}), 500
+        try:
+            entries = r.json() or []
+        except Exception:
+            entries = []
     except Exception as e:
-        return jsonify({"error": f"Erreur récupération entrées Toggl: {str(e)}"}), 500
+        return jsonify({"error": f"Erreur Toggl: {str(e)}"}), 500
 
-    # Debug: show sample entry and maps
-    sample_entry = entries[0] if entries else {}
-    print("DEBUG client_map:", client_map)
-    print("DEBUG project_map sample:", dict(list(project_map.items())[:3]))
-    print("DEBUG sample entry:", {k: sample_entry.get(k) for k in ["description","project_id","duration","tags"]})
-
-    # Group entries by client
+    # Group by client
     seconds_by_client: dict = defaultdict(int)
-    tasks_by_client: dict = defaultdict(list)
+    tasks_by_client:   dict = defaultdict(list)
 
-    for entry in (entries or []):
+    for entry in entries:
         dur = entry.get("duration", 0)
-        if dur < 0:  # still running
+        if dur <= 0:
             continue
-        pid = entry.get("project_id")
+        pid  = str(entry.get("project_id", "")) if entry.get("project_id") else None
         proj = project_map.get(pid, {}) if pid else {}
-        cid = proj.get("client_id")
+        cid  = str(proj.get("client_id", "")) if proj.get("client_id") else None
         seconds_by_client[cid] += dur
         desc = (entry.get("description") or "").strip()
         if desc:
             h2, m2, s2 = dur // 3600, (dur % 3600) // 60, dur % 60
             tasks_by_client[cid].append({"description": desc, "duration": f"{h2:02d}:{m2:02d}:{s2:02d}"})
 
-    # Build client billing list
+    # Build billing list
     clients = []
     for cid, seconds in seconds_by_client.items():
-        name = client_map.get(cid, f"Client #{cid}") if cid else "Sans client"
-        name = re.sub(r'^CLIENT\s+', '', name)
+        raw_name = client_map.get(cid, "") if cid else ""
+        name = re.sub(r'^CLIENT\s+', '', raw_name.upper().strip()) if raw_name else "Sans client"
         actual_h = seconds / 3600
         hh, mm, ss = seconds // 3600, (seconds % 3600) // 60, seconds % 60
-        actual_duration = f"{hh:02d}:{mm:02d}:{ss:02d}"
 
         is_forfait = name in FORFAIT_CLIENTS
         if is_forfait:
@@ -169,7 +179,7 @@ def facturation_toggl():
         clients.append({
             "name": name,
             "actual_hours": round(actual_h, 4),
-            "actual_duration": actual_duration,
+            "actual_duration": f"{hh:02d}:{mm:02d}:{ss:02d}",
             "billed_hours": float(billed_h),
             "rate": rate,
             "is_forfait": is_forfait,
@@ -180,15 +190,7 @@ def facturation_toggl():
         })
 
     clients.sort(key=lambda x: x["ht"], reverse=True)
-    return jsonify({
-        "clients": clients,
-        "_debug": {
-            "nb_entries": len(entries or []),
-            "client_map": client_map,
-            "project_sample": dict(list(project_map.items())[:5]),
-            "sample_entry": {k: sample_entry.get(k) for k in ["description","project_id","duration","tags"]} if entries else {},
-        }
-    })
+    return jsonify({"clients": clients})
 
 
 @app.route("/upload", methods=["POST"])
