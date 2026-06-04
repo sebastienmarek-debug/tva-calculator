@@ -113,6 +113,26 @@
     .loading { text-align: center; padding: 3rem; color: #6e6e73; }
     .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e5e5ea; border-top-color: #0071e3; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
+
+    /* Règles mémorisées */
+    #rules-panel { margin-bottom: 1.5rem; }
+    .rules-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 0.75rem; }
+    .rules-header h3 { font-size: 0.9rem; color: #6e6e73; font-weight: 500; }
+    .rules-list { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+    .rule-chip {
+      display: flex; align-items: center; gap: 0.5rem;
+      background: white; border: 1px solid #e5e5ea; border-radius: 20px;
+      padding: 0.3rem 0.75rem; font-size: 0.8rem;
+    }
+    .rule-chip .rule-status { font-weight: 600; }
+    .rule-chip .rule-status.collected { color: #1a7f3c; }
+    .rule-chip .rule-status.deductible { color: #0040a0; }
+    .rule-chip .rule-status.exempt { color: #6e6e73; }
+    .rule-chip button { background: none; border: none; cursor: pointer; color: #c7c7cc; font-size: 0.9rem; line-height: 1; padding: 0; }
+    .rule-chip button:hover { color: #ff3b30; }
+
+    .modal-remember { display: flex; align-items: center; gap: 0.5rem; margin-top: 1rem; padding-top: 1rem; border-top: 1px solid #f5f5f7; font-size: 0.85rem; color: #6e6e73; }
+    .modal-remember input { width: auto; }
   </style>
 </head>
 <body>
@@ -156,6 +176,14 @@
         <span class="icon">⚠️</span>
         <span><strong id="pending-count">0</strong> transaction(s) à valider — cliquez sur "Valider" pour les classifier</span>
       </div>
+    </div>
+
+    <!-- Règles mémorisées -->
+    <div id="rules-panel" style="display:none">
+      <div class="rules-header">
+        <h3>🧠 Règles mémorisées</h3>
+      </div>
+      <div class="rules-list" id="rules-list"></div>
     </div>
 
     <!-- Transactions -->
@@ -216,6 +244,11 @@
         <textarea id="modal-note" rows="2" style="resize:vertical"></textarea>
       </div>
 
+      <div class="modal-remember">
+        <input type="checkbox" id="modal-remember" checked>
+        <label for="modal-remember">Mémoriser cette règle pour les prochains relevés</label>
+      </div>
+
       <div class="modal-actions">
         <button class="btn-cancel" onclick="closeModal()">Annuler</button>
         <button class="btn-save" onclick="saveValidation()">Enregistrer</button>
@@ -231,7 +264,99 @@
     const fmt = (v) => v != null ? v.toFixed(2).replace('.', ',') + ' €' : '—';
     const fmtPct = (v) => v ? (v * 100).toFixed(0) + '%' : '—';
 
-    // Upload
+    // ── Règles mémorisées (localStorage) ──────────────────────────────────
+    const RULES_KEY = 'tva_rules_v1';
+
+    function getRules() {
+      try { return JSON.parse(localStorage.getItem(RULES_KEY) || '{}'); }
+      catch { return {}; }
+    }
+
+    function saveRule(label, status, rate, note) {
+      const key = ruleKey(label);
+      const rules = getRules();
+      rules[key] = { status, rate, note, label_sample: label.slice(0, 60) };
+      localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+      renderRules();
+    }
+
+    function deleteRule(key) {
+      const rules = getRules();
+      delete rules[key];
+      localStorage.setItem(RULES_KEY, JSON.stringify(rules));
+      renderRules();
+    }
+
+    // Clé normalisée : on extrait les mots significatifs du label
+    function ruleKey(label) {
+      // Garde les mots du marchand (après le "|" si présent, sinon du label entier)
+      const merchant = label.includes('|') ? label.split('|')[1] : label;
+      return merchant.trim().toUpperCase()
+        .replace(/CARTE\s+\d+/g, '')
+        .replace(/\s+/g, ' ')
+        .trim()
+        .slice(0, 40);
+    }
+
+    // Applique les règles mémorisées sur les transactions après upload
+    async function applyRules(txs) {
+      const rules = getRules();
+      if (!Object.keys(rules).length) return;
+      const toValidate = [];
+      for (const tx of txs) {
+        const key = ruleKey(tx.label);
+        // Cherche une règle dont la clé est contenue dans la clé du tx ou inversement
+        const matchedRule = Object.entries(rules).find(([k]) =>
+          key.includes(k) || k.includes(key) || similarity(key, k) > 0.75
+        );
+        if (matchedRule && tx.tva_status !== matchedRule[1].status) {
+          toValidate.push({ tx, rule: matchedRule[1] });
+        }
+      }
+      // Applique en batch
+      for (const { tx, rule } of toValidate) {
+        const res = await fetch('/validate', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            session_id: sessionId, id: tx.id,
+            tva_status: rule.status, tva_rate: rule.rate,
+            note: rule.note + ' (règle mémorisée)'
+          })
+        });
+        const updated = await res.json();
+        const idx = transactions.findIndex(t => t.id === tx.id);
+        if (idx >= 0) transactions[idx] = updated;
+      }
+    }
+
+    // Similarité simple basée sur les mots communs
+    function similarity(a, b) {
+      const wa = new Set(a.split(/\s+/).filter(w => w.length > 2));
+      const wb = new Set(b.split(/\s+/).filter(w => w.length > 2));
+      let common = 0;
+      wa.forEach(w => { if (wb.has(w)) common++; });
+      return common / Math.max(wa.size, wb.size, 1);
+    }
+
+    function renderRules() {
+      const rules = getRules();
+      const panel = document.getElementById('rules-panel');
+      const list = document.getElementById('rules-list');
+      const entries = Object.entries(rules);
+      if (!entries.length) { panel.style.display = 'none'; return; }
+      panel.style.display = 'block';
+      const statusLabels = { collected: 'Collectée', deductible: 'Déductible', exempt: 'Exonéré' };
+      list.innerHTML = entries.map(([key, rule]) => `
+        <div class="rule-chip">
+          <span>${rule.label_sample || key}</span>
+          <span class="rule-status ${rule.status}">→ ${statusLabels[rule.status] || rule.status}${rule.rate ? ' ' + (rule.rate*100).toFixed(0) + '%' : ''}</span>
+          <button onclick="deleteRule('${key.replace(/'/g, "\\'")}')" title="Supprimer cette règle">×</button>
+        </div>
+      `).join('');
+    }
+
+    // ── Upload ─────────────────────────────────────────────────────────────
     const uploadZone = document.getElementById('upload-zone');
     const fileInput = document.getElementById('file-input');
 
@@ -254,6 +379,7 @@
       if (data.error) { alert(data.error); location.reload(); return; }
       sessionId = data.session_id;
       transactions = data.transactions;
+      await applyRules(transactions);
       renderAll();
     }
 
@@ -261,6 +387,7 @@
       document.getElementById('summary').style.display = 'block';
       document.getElementById('transactions').style.display = 'block';
       uploadZone.style.display = 'none';
+      renderRules();
       renderTable();
       updateSummary();
     }
@@ -268,7 +395,6 @@
     function renderTable() {
       const tbody = document.getElementById('tx-body');
       const filtered = currentFilter === 'all' ? transactions : transactions.filter(t => t.tva_status === currentFilter);
-
       tbody.innerHTML = filtered.map(tx => `
         <tr data-id="${tx.id}">
           <td>${tx.date}</td>
@@ -294,18 +420,17 @@
       document.getElementById('tva-collected').textContent = fmt(data.tva_collected);
       document.getElementById('tva-deductible').textContent = fmt(data.tva_deductible);
       document.getElementById('tva-due').textContent = fmt(Math.abs(data.tva_due)) + (data.tva_due < 0 ? ' (crédit)' : '');
-      const cardDue = document.getElementById('card-due');
-      cardDue.classList.toggle('positive', data.tva_due <= 0);
-      const alert = document.getElementById('pending-alert');
+      document.getElementById('card-due').classList.toggle('positive', data.tva_due <= 0);
+      const alertEl = document.getElementById('pending-alert');
       if (data.pending_count > 0) {
-        alert.style.display = 'flex';
+        alertEl.style.display = 'flex';
         document.getElementById('pending-count').textContent = data.pending_count;
       } else {
-        alert.style.display = 'none';
+        alertEl.style.display = 'none';
       }
     }
 
-    // Filters
+    // ── Filtres ────────────────────────────────────────────────────────────
     document.querySelectorAll('.filter-btn').forEach(btn => {
       btn.addEventListener('click', () => {
         document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -315,7 +440,7 @@
       });
     });
 
-    // Modal
+    // ── Modal ──────────────────────────────────────────────────────────────
     function openModal(id) {
       const tx = transactions.find(t => t.id === id);
       document.getElementById('modal-tx-id').value = id;
@@ -325,6 +450,7 @@
       document.getElementById('modal-status').value = tx.tva_status === 'pending' ? 'exempt' : tx.tva_status;
       document.getElementById('modal-rate').value = tx.tva_rate || 0.20;
       document.getElementById('modal-note').value = tx.note || '';
+      document.getElementById('modal-remember').checked = true;
       document.getElementById('modal').classList.add('open');
     }
 
@@ -341,6 +467,7 @@
       const status = document.getElementById('modal-status').value;
       const rate = parseFloat(document.getElementById('modal-rate').value);
       const note = document.getElementById('modal-note').value;
+      const remember = document.getElementById('modal-remember').checked;
 
       const res = await fetch('/validate', {
         method: 'POST',
@@ -351,15 +478,19 @@
       const idx = transactions.findIndex(t => t.id === id);
       if (idx >= 0) transactions[idx] = updated;
 
+      if (remember) saveRule(updated.label, status, rate, note);
+
       closeModal();
       renderTable();
       updateSummary();
     }
 
-    // Close modal on overlay click
     document.getElementById('modal').addEventListener('click', function(e) {
       if (e.target === this) closeModal();
     });
+
+    // Affiche les règles existantes au chargement
+    renderRules();
   </script>
 </body>
 </html>
