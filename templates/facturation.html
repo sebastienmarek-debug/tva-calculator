@@ -17,16 +17,45 @@
     header img { height: 70px; object-fit: contain; }
     header h1 { font-size: 1.25rem; font-weight: 700; color: #1d1d1f; }
     header h1 span { color: #c0748a; }
-    .back-link { position: absolute; left: 2rem; top: 50%; transform: translateY(-50%); text-decoration: none; color: #6e6e73; font-size: 0.85rem; display: flex; align-items: center; gap: 0.3rem; }
+    .back-link { position: absolute; left: 2rem; top: 50%; transform: translateY(-50%); text-decoration: none; color: #6e6e73; font-size: 0.85rem; }
     .back-link:hover { color: #1d1d1f; }
 
     .container { max-width: 1000px; margin: 0 auto; padding: 2rem; }
 
+    /* Source selector */
+    .source-tabs { display: flex; gap: 0; background: white; border-radius: 14px; padding: 0.4rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 1.5rem; width: fit-content; }
+    .source-tab { padding: 0.55rem 1.4rem; border-radius: 10px; border: none; background: none; cursor: pointer; font-size: 0.9rem; color: #6e6e73; font-family: inherit; transition: all 0.15s; }
+    .source-tab.active { background: #1d1d1f; color: white; font-weight: 500; }
+
+    /* Toggl API panel */
+    #toggl-panel { background: white; border-radius: 16px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
+    .toggl-panel-title { font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
+    .toggl-fields { display: grid; grid-template-columns: 1fr auto auto auto; gap: 0.75rem; align-items: end; }
+    .field-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .field-group label { font-size: 0.78rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.04em; }
+    .field-group input, .field-group select {
+      padding: 0.55rem 0.8rem; border: 1px solid #d1d1d6; border-radius: 10px;
+      font-size: 0.9rem; font-family: inherit; background: white;
+    }
+    .field-group input[type="password"] { font-family: monospace; letter-spacing: 0.1em; }
+    .btn-fetch {
+      padding: 0.55rem 1.4rem; background: #1d1d1f; color: white; border: none;
+      border-radius: 10px; cursor: pointer; font-size: 0.9rem; font-weight: 500; white-space: nowrap;
+      height: fit-content;
+    }
+    .btn-fetch:hover { background: #3a3a3c; }
+    .btn-fetch:disabled { background: #c7c7cc; cursor: not-allowed; }
+    .token-hint { font-size: 0.78rem; color: #6e6e73; margin-top: 0.75rem; }
+    .token-hint a { color: #0071e3; text-decoration: none; }
+    .token-saved { font-size: 0.78rem; color: #34c759; margin-top: 0.5rem; display: none; }
+
+    /* Upload zone (PDF mode) */
     #upload-zone {
       border: 2px dashed #c7c7cc; border-radius: 16px; padding: 3rem;
       text-align: center; cursor: pointer; transition: all 0.2s;
-      background: white; margin-bottom: 2rem;
+      background: white; margin-bottom: 1.5rem; display: none;
     }
+    #upload-zone.visible { display: block; }
     #upload-zone:hover, #upload-zone.drag-over { border-color: #34c759; background: #f0fff4; }
     #upload-zone .icon { font-size: 3rem; margin-bottom: 1rem; }
     #upload-zone p { color: #6e6e73; margin-top: 0.5rem; font-size: 0.9rem; }
@@ -34,26 +63,20 @@
 
     /* Summary total */
     #summary { display: none; margin-bottom: 2rem; }
-    .total-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1.5rem; }
+    .total-cards { display: grid; grid-template-columns: repeat(3, 1fr); gap: 1rem; margin-bottom: 1rem; }
     .card { background: white; border-radius: 16px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
     .card .label { font-size: 0.8rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.05em; }
     .card .value { font-size: 2rem; font-weight: 700; margin-top: 0.5rem; }
     .card.ht .value { color: #1d1d1f; }
     .card.tva .value { color: #ff9500; }
     .card.ttc .value { color: #34c759; }
+    .period-label { font-size: 0.85rem; color: #6e6e73; text-align: center; }
 
     /* Client cards */
     #clients { display: none; }
     .clients-grid { display: flex; flex-direction: column; gap: 1rem; }
-
-    .client-card {
-      background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06);
-      overflow: hidden;
-    }
-    .client-header {
-      display: flex; align-items: center; justify-content: space-between;
-      padding: 1.25rem 1.5rem; cursor: pointer; user-select: none;
-    }
+    .client-card { background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+    .client-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; user-select: none; }
     .client-header:hover { background: #fafafa; }
     .client-left { display: flex; align-items: center; gap: 1rem; }
     .client-name { font-size: 1rem; font-weight: 700; }
@@ -67,26 +90,20 @@
     .amt-ttc { color: #34c759; }
     .toggle-icon { color: #c7c7cc; font-size: 1rem; transition: transform 0.2s; }
     .toggle-icon.open { transform: rotate(180deg); }
-
     .client-tasks { display: none; border-top: 1px solid #f5f5f7; padding: 0.75rem 1.5rem; }
     .client-tasks.open { display: block; }
     .task-row { display: flex; justify-content: space-between; padding: 0.4rem 0; font-size: 0.85rem; border-bottom: 1px solid #f9f9f9; }
     .task-row:last-child { border-bottom: none; }
     .task-desc { color: #3a3a3c; flex: 1; padding-right: 1rem; }
     .task-dur { color: #6e6e73; font-variant-numeric: tabular-nums; white-space: nowrap; }
-
-    /* Rate editor */
     .rate-editor { display: flex; align-items: center; gap: 0.5rem; }
-    .rate-input {
-      width: 60px; padding: 0.2rem 0.4rem; border: 1px solid #d1d1d6;
-      border-radius: 6px; font-size: 0.85rem; text-align: right;
-    }
+    .rate-input { width: 60px; padding: 0.2rem 0.4rem; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 0.85rem; text-align: right; }
     .rate-label { font-size: 0.8rem; color: #6e6e73; }
 
-    .spinner { display: inline-block; width: 32px; height: 32px; border: 3px solid #e5e5ea; border-top-color: #34c759; border-radius: 50%; animation: spin 0.8s linear infinite; margin-bottom: 1rem; }
+    .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid #e5e5ea; border-top-color: #1d1d1f; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
 
-    .fmt { font-variant-numeric: tabular-nums; }
+    .error-msg { background: #fff0f0; border: 1px solid #ffb3b3; border-radius: 10px; padding: 0.75rem 1rem; color: #cc0000; font-size: 0.9rem; margin-bottom: 1rem; display: none; }
   </style>
 </head>
 <body>
@@ -97,6 +114,35 @@
   </header>
 
   <div class="container">
+
+    <!-- Source selector -->
+    <div class="source-tabs">
+      <button class="source-tab active" onclick="setMode('api')">🔗 Toggl en direct</button>
+      <button class="source-tab" onclick="setMode('pdf')">📄 Import PDF</button>
+    </div>
+
+    <!-- Toggl API panel -->
+    <div id="toggl-panel">
+      <div class="toggl-panel-title">🔑 Connexion Toggl Track</div>
+      <div class="toggl-fields">
+        <div class="field-group" style="grid-column: 1 / -2;">
+          <label>Token API Toggl</label>
+          <input type="password" id="toggl-token" placeholder="Votre token API (ex: 1a2b3c4d5e6f...)">
+        </div>
+        <div class="field-group">
+          <label>Mois</label>
+          <input type="month" id="toggl-month" value="">
+        </div>
+        <button class="btn-fetch" onclick="fetchToggl()" id="btn-fetch">Récupérer</button>
+      </div>
+      <div class="token-hint">
+        Votre token API se trouve dans <a href="https://track.toggl.com/profile" target="_blank">Toggl → Profil → API token</a> (tout en bas de la page).
+        Il est sauvegardé dans votre navigateur.
+      </div>
+      <div class="token-saved" id="token-saved">✓ Token mémorisé dans votre navigateur</div>
+    </div>
+
+    <!-- PDF upload zone -->
     <div id="upload-zone" onclick="document.getElementById('file-input').click()">
       <div class="icon">🧾</div>
       <strong>Déposez votre export Toggl Track PDF</strong>
@@ -104,73 +150,125 @@
       <input type="file" id="file-input" accept=".pdf">
     </div>
 
+    <div class="error-msg" id="error-msg"></div>
+
+    <!-- Summary -->
     <div id="summary">
       <div class="total-cards">
-        <div class="card ht">
-          <div class="label">Total HT</div>
-          <div class="value fmt" id="total-ht">—</div>
-        </div>
-        <div class="card tva">
-          <div class="label">TVA 20%</div>
-          <div class="value fmt" id="total-tva">—</div>
-        </div>
-        <div class="card ttc">
-          <div class="label">Total TTC</div>
-          <div class="value fmt" id="total-ttc">—</div>
-        </div>
+        <div class="card ht"><div class="label">Total HT</div><div class="value" id="total-ht">—</div></div>
+        <div class="card tva"><div class="label">TVA 20%</div><div class="value" id="total-tva">—</div></div>
+        <div class="card ttc"><div class="label">Total TTC</div><div class="value" id="total-ttc">—</div></div>
       </div>
+      <div class="period-label" id="period-label"></div>
     </div>
 
     <div id="clients">
       <div class="clients-grid" id="clients-grid"></div>
     </div>
+
   </div>
 
   <script>
     let clientsData = [];
+    let currentMode = 'api';
 
     const fmt = v => v.toFixed(2).replace('.', ',') + ' €';
-    const fmtH = h => {
-      const total = Math.round(h * 3600);
-      const hh = Math.floor(total / 3600);
-      const mm = Math.floor((total % 3600) / 60);
-      return `${hh}h${mm.toString().padStart(2,'0')}`;
-    };
 
+    // ── Init ───────────────────────────────────────────────────────────────
+    // Set default month to current month
+    const now = new Date();
+    document.getElementById('toggl-month').value =
+      `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}`;
+
+    // Restore saved token
+    const savedToken = localStorage.getItem('toggl_api_token');
+    if (savedToken) {
+      document.getElementById('toggl-token').value = savedToken;
+      document.getElementById('token-saved').style.display = 'block';
+    }
+
+    // ── Mode toggle ────────────────────────────────────────────────────────
+    function setMode(mode) {
+      currentMode = mode;
+      document.querySelectorAll('.source-tab').forEach((t, i) => {
+        t.classList.toggle('active', (i === 0 && mode === 'api') || (i === 1 && mode === 'pdf'));
+      });
+      document.getElementById('toggl-panel').style.display = mode === 'api' ? 'block' : 'none';
+      document.getElementById('upload-zone').classList.toggle('visible', mode === 'pdf');
+    }
+    setMode('api');
+
+    // ── Toggl API fetch ────────────────────────────────────────────────────
+    async function fetchToggl() {
+      const token = document.getElementById('toggl-token').value.trim();
+      const month = document.getElementById('toggl-month').value; // YYYY-MM
+      if (!token) { showError('Veuillez entrer votre token API Toggl.'); return; }
+      if (!month) { showError('Veuillez sélectionner un mois.'); return; }
+
+      // Save token
+      localStorage.setItem('toggl_api_token', token);
+      document.getElementById('token-saved').style.display = 'block';
+
+      const [year, m] = month.split('-').map(Number);
+      const start = `${year}-${String(m).padStart(2,'0')}-01`;
+      const lastDay = new Date(year, m, 0).getDate();
+      const end = `${year}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+
+      const btn = document.getElementById('btn-fetch');
+      btn.disabled = true;
+      btn.innerHTML = '<span class="spinner"></span>Chargement…';
+      hideError();
+
+      const res = await fetch('/facturation/toggl', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token, start_date: start, end_date: end }),
+      });
+      const data = await res.json();
+
+      btn.disabled = false;
+      btn.textContent = 'Récupérer';
+
+      if (data.error) { showError(data.error); return; }
+
+      clientsData = data.clients;
+      const monthNames = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+      render(`${monthNames[m-1]} ${year}`);
+    }
+
+    // ── PDF upload ─────────────────────────────────────────────────────────
     const uploadZone = document.getElementById('upload-zone');
     const fileInput = document.getElementById('file-input');
-
     uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag-over'); });
     uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag-over'));
     uploadZone.addEventListener('drop', e => {
       e.preventDefault(); uploadZone.classList.remove('drag-over');
-      if (e.dataTransfer.files[0]) uploadFile(e.dataTransfer.files[0]);
+      if (e.dataTransfer.files[0]) uploadPDF(e.dataTransfer.files[0]);
     });
-    fileInput.addEventListener('change', () => { if (fileInput.files[0]) uploadFile(fileInput.files[0]); });
+    fileInput.addEventListener('change', () => { if (fileInput.files[0]) uploadPDF(fileInput.files[0]); });
 
-    async function uploadFile(file) {
+    async function uploadPDF(file) {
       uploadZone.innerHTML = `<div class="spinner"></div><p>Analyse du rapport Toggl…</p>`;
       const fd = new FormData();
       fd.append('file', file);
       const res = await fetch('/facturation/upload', { method: 'POST', body: fd });
       const data = await res.json();
-      if (data.error) { alert(data.error); location.reload(); return; }
+      if (data.error) { showError(data.error); return; }
       clientsData = data.clients;
-      render();
+      render('');
     }
 
+    // ── Render ─────────────────────────────────────────────────────────────
     function computeTotals() {
       return clientsData.reduce((acc, c) => {
         const ht = c.billed_hours * c.rate;
-        acc.ht += ht;
-        acc.tva += ht * 0.20;
-        acc.ttc += ht * 1.20;
+        acc.ht += ht; acc.tva += ht * 0.20; acc.ttc += ht * 1.20;
         return acc;
       }, { ht: 0, tva: 0, ttc: 0 });
     }
 
-    function render() {
-      uploadZone.style.display = 'none';
+    function render(periodLabel) {
+      hideError();
       document.getElementById('summary').style.display = 'block';
       document.getElementById('clients').style.display = 'block';
 
@@ -178,15 +276,13 @@
       document.getElementById('total-ht').textContent = fmt(totals.ht);
       document.getElementById('total-tva').textContent = fmt(totals.tva);
       document.getElementById('total-ttc').textContent = fmt(totals.ttc);
+      document.getElementById('period-label').textContent = periodLabel ? `Période : ${periodLabel}` : '';
 
-      const grid = document.getElementById('clients-grid');
-      grid.innerHTML = clientsData.map((c, i) => {
+      document.getElementById('clients-grid').innerHTML = clientsData.map((c, i) => {
         const ht = c.billed_hours * c.rate;
-        const ttc = ht * 1.20;
         const hoursLabel = c.is_forfait
           ? `Forfait 9h (réel : ${c.actual_duration})`
           : `${c.actual_duration} tracées → <strong>${c.billed_hours}h retenues</strong>`;
-
         return `
         <div class="client-card">
           <div class="client-header" onclick="toggleTasks(${i})">
@@ -205,11 +301,11 @@
               </div>
               <div class="amount-block">
                 <div class="amt-label">HT</div>
-                <div class="amt-value amt-ht fmt" id="ht-${i}">${fmt(ht)}</div>
+                <div class="amt-value amt-ht" id="ht-${i}">${fmt(ht)}</div>
               </div>
               <div class="amount-block">
                 <div class="amt-label">TTC</div>
-                <div class="amt-value amt-ttc fmt" id="ttc-${i}">${fmt(ttc)}</div>
+                <div class="amt-value amt-ttc" id="ttc-${i}">${fmt(ht * 1.20)}</div>
               </div>
               <span class="toggle-icon" id="icon-${i}">▼</span>
             </div>
@@ -226,10 +322,8 @@
     }
 
     function toggleTasks(i) {
-      const tasks = document.getElementById(`tasks-${i}`);
-      const icon = document.getElementById(`icon-${i}`);
-      tasks.classList.toggle('open');
-      icon.classList.toggle('open');
+      document.getElementById(`tasks-${i}`).classList.toggle('open');
+      document.getElementById(`icon-${i}`).classList.toggle('open');
     }
 
     function updateRate(i, newRate) {
@@ -237,11 +331,17 @@
       const ht = clientsData[i].billed_hours * clientsData[i].rate;
       document.getElementById(`ht-${i}`).textContent = fmt(ht);
       document.getElementById(`ttc-${i}`).textContent = fmt(ht * 1.20);
-      const totals = computeTotals();
-      document.getElementById('total-ht').textContent = fmt(totals.ht);
-      document.getElementById('total-tva').textContent = fmt(totals.tva);
-      document.getElementById('total-ttc').textContent = fmt(totals.ttc);
+      const t = computeTotals();
+      document.getElementById('total-ht').textContent = fmt(t.ht);
+      document.getElementById('total-tva').textContent = fmt(t.tva);
+      document.getElementById('total-ttc').textContent = fmt(t.ttc);
     }
+
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg; el.style.display = 'block';
+    }
+    function hideError() { document.getElementById('error-msg').style.display = 'none'; }
   </script>
 </body>
 </html>

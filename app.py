@@ -2,10 +2,12 @@ import os
 import json
 import uuid
 import re
+import math
+import requests as http_requests
 from flask import Flask, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 from parser import parse_pdf_reliable, Transaction
-from toggl_parser import parse_toggl_pdf
+from toggl_parser import parse_toggl_pdf, DEFAULT_RATE, CLIENT_RATES, FORFAIT_CLIENTS
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
@@ -58,6 +60,107 @@ def facturation_upload():
     except Exception as e:
         return jsonify({"error": f"Erreur de parsing: {str(e)}"}), 500
     return jsonify({"clients": clients})
+
+
+@app.route("/facturation/toggl", methods=["POST"])
+def facturation_toggl():
+    """Fetch Toggl report directly via API using user's token."""
+    data = request.json
+    token = data.get("token", "").strip()
+    start_date = data.get("start_date")  # YYYY-MM-DD
+    end_date = data.get("end_date")      # YYYY-MM-DD
+
+    if not token or not start_date or not end_date:
+        return jsonify({"error": "Token, start_date et end_date requis"}), 400
+
+    auth = (token, "api_token")
+    headers = {"Content-Type": "application/json"}
+
+    # Get workspace ID
+    try:
+        me_res = http_requests.get("https://api.track.toggl.com/api/v9/me",
+                                   auth=auth, headers=headers, timeout=10)
+        if me_res.status_code == 403:
+            return jsonify({"error": "Token invalide — vérifiez votre token API Toggl"}), 403
+        me = me_res.json()
+        workspace_id = me.get("default_workspace_id")
+        if not workspace_id:
+            workspaces = http_requests.get("https://api.track.toggl.com/api/v9/workspaces",
+                                           auth=auth, headers=headers, timeout=10).json()
+            workspace_id = workspaces[0]["id"]
+    except Exception as e:
+        return jsonify({"error": f"Erreur connexion Toggl: {str(e)}"}), 500
+
+    # Fetch summary report (v3)
+    try:
+        report_res = http_requests.post(
+            f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/summary/time_entries",
+            auth=auth,
+            headers=headers,
+            json={
+                "start_date": start_date,
+                "end_date": end_date,
+                "grouping": "clients",
+                "sub_grouping": "projects",
+                "include_time_entries": True,
+            },
+            timeout=15,
+        )
+        report = report_res.json()
+    except Exception as e:
+        return jsonify({"error": f"Erreur rapport Toggl: {str(e)}"}), 500
+
+    # Parse report into client billing
+    clients = []
+    groups = report.get("groups", [])
+    for group in groups:
+        name = (group.get("title") or "Sans client").upper().strip()
+        name = re.sub(r'^CLIENT\s+', '', name)
+        seconds = group.get("seconds", 0)
+        actual_h = seconds / 3600
+
+        hh = int(seconds // 3600)
+        mm = int((seconds % 3600) // 60)
+        ss = int(seconds % 60)
+        actual_duration = f"{hh:02d}:{mm:02d}:{ss:02d}"
+
+        is_forfait = name in FORFAIT_CLIENTS
+        if is_forfait:
+            billed_h = FORFAIT_CLIENTS[name]["hours"]
+            rate = FORFAIT_CLIENTS[name]["rate"]
+        else:
+            billed_h = math.ceil(actual_h)
+            rate = CLIENT_RATES.get(name, DEFAULT_RATE)
+
+        ht = round(billed_h * rate, 2)
+
+        # Extract tasks from sub_groups
+        tasks = []
+        for sub in group.get("sub_groups", []):
+            for entry in sub.get("time_entries", []):
+                desc = entry.get("description") or sub.get("title") or ""
+                dur_s = entry.get("seconds", 0)
+                h2 = dur_s // 3600
+                m2 = (dur_s % 3600) // 60
+                s2 = dur_s % 60
+                if desc and desc not in ("-", ""):
+                    tasks.append({"description": desc, "duration": f"{h2:02d}:{m2:02d}:{s2:02d}"})
+
+        clients.append({
+            "name": name,
+            "actual_hours": round(actual_h, 4),
+            "actual_duration": actual_duration,
+            "billed_hours": float(billed_h),
+            "rate": rate,
+            "is_forfait": is_forfait,
+            "ht": ht,
+            "tva": round(ht * 0.20, 2),
+            "ttc": round(ht * 1.20, 2),
+            "tasks": tasks,
+        })
+
+    clients.sort(key=lambda x: x["ht"], reverse=True)
+    return jsonify({"clients": clients, "workspace_id": workspace_id})
 
 
 @app.route("/upload", methods=["POST"])
