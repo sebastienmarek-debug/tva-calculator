@@ -91,39 +91,62 @@ def facturation_toggl():
     except Exception as e:
         return jsonify({"error": f"Erreur connexion Toggl: {str(e)}"}), 500
 
+    # Fetch client list to map ID → name
+    try:
+        clients_res = http_requests.get(
+            f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/clients",
+            auth=auth, headers=headers, timeout=10
+        )
+        client_map = {c["id"]: c["name"].upper().strip() for c in clients_res.json()}
+    except Exception as e:
+        return jsonify({"error": f"Erreur liste clients Toggl: {str(e)}"}), 500
+
+    # Fetch detailed time entries to get descriptions
+    try:
+        detail_res = http_requests.post(
+            f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/time_entries",
+            auth=auth, headers=headers,
+            json={"start_date": start_date, "end_date": end_date, "grouped": False},
+            timeout=15,
+        )
+        detail_entries = detail_res.json() if detail_res.status_code == 200 else []
+    except Exception:
+        detail_entries = []
+
+    # Group detail entries by client_id
+    from collections import defaultdict
+    tasks_by_client: dict = defaultdict(list)
+    for entry in detail_entries:
+        cid = entry.get("client_id")
+        desc = entry.get("description", "").strip()
+        dur_s = entry.get("time_entries", [{}])[0].get("seconds", 0) if entry.get("time_entries") else entry.get("seconds", 0)
+        if desc:
+            h2, m2, s2 = dur_s // 3600, (dur_s % 3600) // 60, dur_s % 60
+            tasks_by_client[cid].append({"description": desc, "duration": f"{h2:02d}:{m2:02d}:{s2:02d}"})
+
     # Fetch summary report (v3)
     try:
         report_res = http_requests.post(
             f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/summary/time_entries",
-            auth=auth,
-            headers=headers,
-            json={
-                "start_date": start_date,
-                "end_date": end_date,
-                "grouping": "clients",
-                "sub_grouping": "time_entries",
-            },
+            auth=auth, headers=headers,
+            json={"start_date": start_date, "end_date": end_date, "grouping": "clients", "sub_grouping": "time_entries"},
             timeout=15,
         )
         report = report_res.json()
-        print("TOGGL REPORT STATUS:", report_res.status_code)
-        print("TOGGL REPORT KEYS:", list(report.keys()) if isinstance(report, dict) else type(report))
-        print("TOGGL REPORT SAMPLE:", str(report)[:500])
     except Exception as e:
         return jsonify({"error": f"Erreur rapport Toggl: {str(e)}"}), 500
 
     # Parse report into client billing
     clients = []
-    groups = report.get("groups", [])
-    for group in groups:
-        name = (group.get("title") or "Sans client").upper().strip()
+    for group in report.get("groups", []):
+        client_id = group.get("id")
+        name = client_map.get(client_id, f"Client #{client_id}") if client_id else "Sans client"
         name = re.sub(r'^CLIENT\s+', '', name)
-        seconds = group.get("seconds", 0)
-        actual_h = seconds / 3600
 
-        hh = int(seconds // 3600)
-        mm = int((seconds % 3600) // 60)
-        ss = int(seconds % 60)
+        # Total seconds = sum of sub_groups seconds
+        seconds = sum(sg.get("seconds", 0) for sg in group.get("sub_groups", []))
+        actual_h = seconds / 3600
+        hh, mm, ss = int(seconds // 3600), int((seconds % 3600) // 60), int(seconds % 60)
         actual_duration = f"{hh:02d}:{mm:02d}:{ss:02d}"
 
         is_forfait = name in FORFAIT_CLIENTS
@@ -131,35 +154,11 @@ def facturation_toggl():
             billed_h = FORFAIT_CLIENTS[name]["hours"]
             rate = FORFAIT_CLIENTS[name]["rate"]
         else:
-            billed_h = math.ceil(actual_h)
+            billed_h = math.ceil(actual_h) if actual_h > 0 else 0
             rate = CLIENT_RATES.get(name, DEFAULT_RATE)
 
         ht = round(billed_h * rate, 2)
-
-        # Extract tasks from sub_groups
-        tasks = []
-        for sub in group.get("sub_groups", []):
-            for entry in sub.get("time_entries", []):
-                desc = entry.get("description") or sub.get("title") or ""
-                dur_s = entry.get("seconds", 0)
-                h2 = dur_s // 3600
-                m2 = (dur_s % 3600) // 60
-                s2 = dur_s % 60
-                if desc and desc not in ("-", ""):
-                    tasks.append({"description": desc, "duration": f"{h2:02d}:{m2:02d}:{s2:02d}"})
-
-        clients.append({
-            "name": name,
-            "actual_hours": round(actual_h, 4),
-            "actual_duration": actual_duration,
-            "billed_hours": float(billed_h),
-            "rate": rate,
-            "is_forfait": is_forfait,
-            "ht": ht,
-            "tva": round(ht * 0.20, 2),
-            "ttc": round(ht * 1.20, 2),
-            "tasks": tasks,
-        })
+        tasks = tasks_by_client.get(client_id, [])
 
     clients.sort(key=lambda x: x["ht"], reverse=True)
     return jsonify({"clients": clients, "workspace_id": workspace_id})
