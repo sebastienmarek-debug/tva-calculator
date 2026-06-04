@@ -102,14 +102,14 @@ def facturation_toggl():
     except Exception:
         client_map = {}
 
-    # Fetch projects map: project_id → client_id
+    # Fetch projects map: project_id → {client_id, name}
     try:
         r = http_requests.get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects",
                               auth=auth, headers=headers, timeout=10)
         raw = r.json() if r.text.strip() else []
-        project_client_map = {p["id"]: p.get("client_id") for p in (raw or [])}
+        project_map = {p["id"]: {"client_id": p.get("client_id"), "name": p.get("name", "")} for p in (raw or [])}
     except Exception:
-        project_client_map = {}
+        project_map = {}
 
     # Fetch all time entries for the period (free API)
     try:
@@ -124,6 +124,12 @@ def facturation_toggl():
     except Exception as e:
         return jsonify({"error": f"Erreur récupération entrées Toggl: {str(e)}"}), 500
 
+    # Debug: show sample entry and maps
+    sample_entry = entries[0] if entries else {}
+    print("DEBUG client_map:", client_map)
+    print("DEBUG project_map sample:", dict(list(project_map.items())[:3]))
+    print("DEBUG sample entry:", {k: sample_entry.get(k) for k in ["description","project_id","duration","tags"]})
+
     # Group entries by client
     seconds_by_client: dict = defaultdict(int)
     tasks_by_client: dict = defaultdict(list)
@@ -133,7 +139,8 @@ def facturation_toggl():
         if dur < 0:  # still running
             continue
         pid = entry.get("project_id")
-        cid = project_client_map.get(pid) if pid else None
+        proj = project_map.get(pid, {}) if pid else {}
+        cid = proj.get("client_id")
         seconds_by_client[cid] += dur
         desc = (entry.get("description") or "").strip()
         if desc:
@@ -172,7 +179,15 @@ def facturation_toggl():
         })
 
     clients.sort(key=lambda x: x["ht"], reverse=True)
-    return jsonify({"clients": clients})
+    return jsonify({
+        "clients": clients,
+        "_debug": {
+            "nb_entries": len(entries or []),
+            "client_map": client_map,
+            "project_sample": dict(list(project_map.items())[:5]),
+            "sample_entry": {k: sample_entry.get(k) for k in ["description","project_id","duration","tags"]} if entries else {},
+        }
+    })
 
 
 @app.route("/upload", methods=["POST"])
