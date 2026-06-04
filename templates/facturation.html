@@ -185,7 +185,7 @@
         const ttc = ht * 1.20;
         const hoursLabel = c.is_forfait
           ? `Forfait 9h (réel : ${c.actual_duration})`
-          : `${fmtH(c.actual_hours)} tracées`;
+          : `${c.actual_duration} tracées → <strong>${c.billed_hours}h retenues</strong>`;
 
         return `
         <div class="client-card">
