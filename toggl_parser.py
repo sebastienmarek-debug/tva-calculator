@@ -1,4 +1,5 @@
 import re
+import math
 import pdfplumber
 
 DEFAULT_RATE = 35.0
@@ -112,7 +113,7 @@ def parse_toggl_pdf(filepath: str) -> list[dict]:
             billed_h = FORFAIT_CLIENTS[name]["hours"]
             rate = FORFAIT_CLIENTS[name]["rate"]
         else:
-            billed_h = actual_h
+            billed_h = math.ceil(actual_h)  # always round up to full hour
             rate = CLIENT_RATES.get(name, DEFAULT_RATE)
 
         ht = round(billed_h * rate, 2)
