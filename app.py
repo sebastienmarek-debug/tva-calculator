@@ -101,12 +101,14 @@ def facturation_toggl():
                 "start_date": start_date,
                 "end_date": end_date,
                 "grouping": "clients",
-                "sub_grouping": "projects",
-                "include_time_entries": True,
+                "sub_grouping": "time_entries",
             },
             timeout=15,
         )
         report = report_res.json()
+        print("TOGGL REPORT STATUS:", report_res.status_code)
+        print("TOGGL REPORT KEYS:", list(report.keys()) if isinstance(report, dict) else type(report))
+        print("TOGGL REPORT SAMPLE:", str(report)[:500])
     except Exception as e:
         return jsonify({"error": f"Erreur rapport Toggl: {str(e)}"}), 500
 
