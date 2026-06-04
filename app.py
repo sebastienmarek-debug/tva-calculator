@@ -76,21 +76,27 @@ def facturation_toggl():
     auth = (token, "api_token")
     headers = {"Content-Type": "application/json"}
 
+    def safe_json(r):
+        try:
+            return r.json()
+        except Exception:
+            return None
+
     def toggl_get(url, **kwargs):
-        r = http_requests.get(url, auth=auth, headers=headers, timeout=10, **kwargs)
-        return r.json() if r.text.strip() else None
+        r = http_requests.get(url, auth=auth, headers=headers, timeout=15, **kwargs)
+        return r.status_code, safe_json(r), r.text[:300]
 
     # Get workspace ID
     try:
-        me = toggl_get("https://api.track.toggl.com/api/v9/me")
-        if me is None:
-            return jsonify({"error": "Toggl ne répond pas — réessayez dans quelques secondes"}), 503
-        if isinstance(me, dict) and me.get("message") == "Unauthorized":
+        status, me, raw = toggl_get("https://api.track.toggl.com/api/v9/me")
+        if status == 403 or (isinstance(me, dict) and "Unauthorized" in str(me)):
             return jsonify({"error": "Token invalide — vérifiez votre token API Toggl"}), 403
-        workspace_id = me.get("default_workspace_id") if me else None
+        if me is None or not isinstance(me, dict):
+            return jsonify({"error": f"Toggl /me a répondu HTTP {status} : {raw}"}), 503
+        workspace_id = me.get("default_workspace_id")
         if not workspace_id:
-            workspaces = toggl_get("https://api.track.toggl.com/api/v9/workspaces") or []
-            workspace_id = workspaces[0]["id"] if workspaces else None
+            status2, wks, raw2 = toggl_get("https://api.track.toggl.com/api/v9/workspaces")
+            workspace_id = wks[0]["id"] if wks else None
         if not workspace_id:
             return jsonify({"error": "Impossible de trouver votre workspace Toggl"}), 500
     except Exception as e:
@@ -99,22 +105,12 @@ def facturation_toggl():
     from collections import defaultdict
 
     # Fetch clients map: id → name
-    try:
-        r = http_requests.get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/clients",
-                              auth=auth, headers=headers, timeout=10)
-        raw = r.json() if r.text.strip() else []
-        client_map = {c["id"]: c["name"].upper().strip() for c in (raw or [])}
-    except Exception:
-        client_map = {}
+    _, raw_clients, _ = toggl_get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/clients")
+    client_map = {c["id"]: c["name"].upper().strip() for c in (raw_clients or [])} if isinstance(raw_clients, list) else {}
 
     # Fetch projects map: project_id → {client_id, name}
-    try:
-        r = http_requests.get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects",
-                              auth=auth, headers=headers, timeout=10)
-        raw = r.json() if r.text.strip() else []
-        project_map = {p["id"]: {"client_id": p.get("client_id"), "name": p.get("name", "")} for p in (raw or [])}
-    except Exception:
-        project_map = {}
+    _, raw_projects, _ = toggl_get(f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/projects")
+    project_map = {p["id"]: {"client_id": p.get("client_id"), "name": p.get("name", "")} for p in (raw_projects or [])} if isinstance(raw_projects, list) else {}
 
     # Fetch all time entries for the period (free API)
     try:
@@ -124,8 +120,8 @@ def facturation_toggl():
             params={"start_date": start_date + "T00:00:00Z", "end_date": end_date + "T23:59:59Z"},
         )
         if r.status_code != 200:
-            return jsonify({"error": f"Toggl a répondu HTTP {r.status_code} : {r.text[:200]}"}), 500
-        entries = r.json() if r.text.strip() else []
+            return jsonify({"error": f"Toggl time_entries a répondu HTTP {r.status_code} : {r.text[:200]}"}), 500
+        entries = safe_json(r) or []
     except Exception as e:
         return jsonify({"error": f"Erreur récupération entrées Toggl: {str(e)}"}), 500
 
