@@ -133,6 +133,10 @@ def facturation_toggl():
             json={"start_date": start_date, "end_date": end_date, "grouping": "clients", "sub_grouping": "time_entries"},
             timeout=15,
         )
+        if not report_res.text.strip():
+            return jsonify({"clients": [], "debug": f"Réponse vide de Toggl (HTTP {report_res.status_code}) — aucune entrée sur cette période ?"})
+        if report_res.status_code != 200:
+            return jsonify({"error": f"Toggl a répondu HTTP {report_res.status_code} : {report_res.text[:200]}"}), 500
         report = report_res.json()
     except Exception as e:
         return jsonify({"error": f"Erreur rapport Toggl: {str(e)}"}), 500
