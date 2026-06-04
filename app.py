@@ -160,6 +160,19 @@ def facturation_toggl():
         ht = round(billed_h * rate, 2)
         tasks = tasks_by_client.get(client_id, [])
 
+        clients.append({
+            "name": name,
+            "actual_hours": round(actual_h, 4),
+            "actual_duration": actual_duration,
+            "billed_hours": float(billed_h),
+            "rate": rate,
+            "is_forfait": is_forfait,
+            "ht": ht,
+            "tva": round(ht * 0.20, 2),
+            "ttc": round(ht * 1.20, 2),
+            "tasks": tasks,
+        })
+
     clients.sort(key=lambda x: x["ht"], reverse=True)
     return jsonify({"clients": clients, "workspace_id": workspace_id})
 
