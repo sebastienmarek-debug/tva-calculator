@@ -25,6 +25,7 @@ EXEMPT_PATTERNS = [
     (r"MMA\s*IARD",                      "Assurance — exonéré TVA"),
     (r"FINANCES PUBLIQUES|DGFIP|TVA1-",  "Paiement impôts/TVA — exonéré"),
     (r"FRAIS PAIE CB",                   "Frais bancaires — exonéré TVA"),
+    (r"SNCF|LMW\*SNCF",                 "SNCF — exonéré TVA (transport de personnes)"),
 ]
 
 DEDUCTIBLE_PATTERNS = [
@@ -35,7 +36,6 @@ DEDUCTIBLE_PATTERNS = [
     (r"CAPCUT",                 0.20, "CapCut — TVA déductible 20%"),
     (r"ORANGE",                 0.20, "Orange pro — TVA déductible 20%"),
     (r"CYBEARY",                0.20, "Stockage cloud — TVA déductible 20%"),
-    (r"SNCF|LMW\*SNCF",        0.10, "SNCF — TVA déductible 10%"),
     (r"AUTOROUTES",             0.20, "Péages — TVA déductible 20%"),
     (r"AIRBNB",                 0.10, "Hébergement — TVA déductible 10%"),
     (r"INPI",                   0.20, "INPI — TVA déductible 20%"),
