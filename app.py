@@ -91,15 +91,16 @@ def facturation_toggl():
     except Exception as e:
         return jsonify({"error": f"Erreur connexion Toggl: {str(e)}"}), 500
 
-    # Fetch client list to map ID → name
+    # Fetch client list to map ID → name (indépendant de la période)
     try:
         clients_res = http_requests.get(
             f"https://api.track.toggl.com/api/v9/workspaces/{workspace_id}/clients",
             auth=auth, headers=headers, timeout=10
         )
-        client_map = {c["id"]: c["name"].upper().strip() for c in clients_res.json()}
+        raw_clients = clients_res.json() if clients_res.text.strip() else []
+        client_map = {c["id"]: c["name"].upper().strip() for c in (raw_clients or [])}
     except Exception as e:
-        return jsonify({"error": f"Erreur liste clients Toggl: {str(e)}"}), 500
+        client_map = {}  # continue sans noms, on affichera les IDs
 
     # Fetch detailed time entries to get descriptions
     try:
