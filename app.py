@@ -199,7 +199,7 @@ def facturation_toggl():
             billed_h = FORFAIT_CLIENTS[client_name]["hours"]
             rate     = FORFAIT_CLIENTS[client_name]["rate"]
         else:
-            billed_h = math.ceil(actual_h) if actual_h > 0 else 0
+            billed_h = math.floor(actual_h + 0.75) if actual_h > 0 else 0  # arrondi si ≥15min
             rate     = CLIENT_RATES.get(client_name, DEFAULT_RATE)
 
         ht = round(billed_h * rate, 2)
