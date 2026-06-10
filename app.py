@@ -7,7 +7,7 @@ import requests as http_requests
 from flask import Flask, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 from parser import parse_pdf_reliable, Transaction
-from toggl_parser import parse_toggl_pdf, DEFAULT_RATE, CLIENT_RATES, FORFAIT_CLIENTS
+from toggl_parser import parse_toggl_pdf, DEFAULT_RATE, CLIENT_RATES, FORFAIT_CLIENTS, FORFAIT_PROJECTS
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
@@ -142,54 +142,72 @@ def facturation_toggl():
     except Exception as e:
         return jsonify({"error": f"Erreur Toggl: {str(e)}"}), 500
 
-    # Group by client
-    seconds_by_client: dict = defaultdict(int)
-    tasks_by_client:   dict = defaultdict(list)
+    # Group by project (key = project_id or "no_project__{client_id}")
+    seconds_by_proj: dict = defaultdict(int)
+    tasks_by_proj:   dict = defaultdict(list)
+    proj_meta:       dict = {}  # key → {client_name, project_name}
 
     for entry in entries:
         dur = entry.get("duration", 0)
         if dur <= 0:
             continue
-        pid  = str(entry.get("project_id", "")) if entry.get("project_id") else None
+        pid  = str(entry.get("project_id")) if entry.get("project_id") else None
         proj = project_map.get(pid, {}) if pid else {}
-        cid  = str(proj.get("client_id", "")) if proj.get("client_id") else None
-        seconds_by_client[cid] += dur
+        cid  = str(proj.get("client_id")) if proj.get("client_id") else None
+        proj_name = proj.get("name", "") if proj else ""
+
+        # Clé unique : projet si dispo, sinon regroupé par client
+        key = pid if pid else f"no_project__{cid or 'unknown'}"
+        seconds_by_proj[key] += dur
+
+        if key not in proj_meta:
+            raw_cname = client_map.get(cid, "") if cid else ""
+            client_name = re.sub(r'^CLIENT\s+', '', raw_cname.upper().strip()) if raw_cname else "Sans client"
+            proj_meta[key] = {
+                "client_name": client_name,
+                "project_name": re.sub(r'^CLIENT\s+', '', proj_name.upper().strip()) if proj_name else "",
+            }
+
         desc = (entry.get("description") or "").strip()
         if desc:
             h2, m2, s2 = dur // 3600, (dur % 3600) // 60, dur % 60
-            tasks_by_client[cid].append({"description": desc, "duration": f"{h2:02d}:{m2:02d}:{s2:02d}"})
+            tasks_by_proj[key].append({"description": desc, "duration": f"{h2:02d}:{m2:02d}:{s2:02d}"})
 
-    # Build billing list
+    # Build billing list (one row per project)
     clients = []
-    for cid, seconds in seconds_by_client.items():
-        raw_name = client_map.get(cid, "") if cid else ""
-        name = re.sub(r'^CLIENT\s+', '', raw_name.upper().strip()) if raw_name else "Sans client"
-        actual_h = seconds / 3600
-        hh, mm, ss = seconds // 3600, (seconds % 3600) // 60, seconds % 60
+    for key, seconds in seconds_by_proj.items():
+        meta        = proj_meta[key]
+        client_name = meta["client_name"]
+        proj_name   = meta["project_name"]
+        actual_h    = seconds / 3600
+        hh, mm, ss  = seconds // 3600, (seconds % 3600) // 60, seconds % 60
 
-        is_forfait = name in FORFAIT_CLIENTS
+        # Forfait se décide sur le nom du PROJET
+        is_forfait = proj_name.upper() in FORFAIT_PROJECTS
         if is_forfait:
-            billed_h = FORFAIT_CLIENTS[name]["hours"]
-            rate = FORFAIT_CLIENTS[name]["rate"]
+            billed_h = FORFAIT_PROJECTS[proj_name.upper()]["hours"]
+            rate     = FORFAIT_PROJECTS[proj_name.upper()]["rate"]
         else:
             billed_h = math.ceil(actual_h) if actual_h > 0 else 0
-            rate = CLIENT_RATES.get(name, DEFAULT_RATE)
+            rate     = CLIENT_RATES.get(client_name, DEFAULT_RATE)
 
         ht = round(billed_h * rate, 2)
         clients.append({
-            "name": name,
-            "actual_hours": round(actual_h, 4),
+            "client_name":     client_name,
+            "project_name":    proj_name,
+            "actual_hours":    round(actual_h, 4),
             "actual_duration": f"{hh:02d}:{mm:02d}:{ss:02d}",
-            "billed_hours": float(billed_h),
-            "rate": rate,
-            "is_forfait": is_forfait,
-            "ht": ht,
-            "tva": round(ht * 0.20, 2),
-            "ttc": round(ht * 1.20, 2),
-            "tasks": tasks_by_client.get(cid, []),
+            "billed_hours":    float(billed_h),
+            "rate":            rate,
+            "is_forfait":      is_forfait,
+            "ht":              ht,
+            "tva":             round(ht * 0.20, 2),
+            "ttc":             round(ht * 1.20, 2),
+            "tasks":           tasks_by_proj.get(key, []),
         })
 
-    clients.sort(key=lambda x: x["ht"], reverse=True)
+    # Trier : client puis projet
+    clients.sort(key=lambda x: (x["client_name"], x["project_name"]))
     return jsonify({"clients": clients})
 
 

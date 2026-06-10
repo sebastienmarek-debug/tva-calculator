@@ -72,32 +72,43 @@
     .card.ttc .value { color: #34c759; }
     .period-label { font-size: 0.85rem; color: #6e6e73; text-align: center; }
 
-    /* Client cards */
+    /* Client groups */
     #clients { display: none; }
-    .clients-grid { display: flex; flex-direction: column; gap: 1rem; }
-    .client-card { background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
-    .client-header { display: flex; align-items: center; justify-content: space-between; padding: 1.25rem 1.5rem; cursor: pointer; user-select: none; }
-    .client-header:hover { background: #fafafa; }
-    .client-left { display: flex; align-items: center; gap: 1rem; }
-    .client-name { font-size: 1rem; font-weight: 700; }
-    .client-hours { font-size: 0.85rem; color: #6e6e73; }
+    .clients-grid { display: flex; flex-direction: column; gap: 1.5rem; }
+
+    /* Group = un client avec 1..n projets */
+    .client-group { background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
+    .client-group-header { padding: 0.75rem 1.5rem; background: #f5f5f7; border-bottom: 1px solid #e5e5ea; display: flex; align-items: center; justify-content: space-between; }
+    .client-group-name { font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #6e6e73; }
+    .client-group-total { font-size: 0.82rem; color: #6e6e73; }
+
+    /* Chaque ligne = un projet */
+    .project-row { border-bottom: 1px solid #f5f5f7; }
+    .project-row:last-child { border-bottom: none; }
+    .project-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; cursor: pointer; user-select: none; }
+    .project-header:hover { background: #fafafa; }
+    .project-left { display: flex; align-items: center; gap: 0.75rem; }
+    .project-name { font-size: 1rem; font-weight: 600; }
+    .project-name.no-proj { font-style: italic; color: #6e6e73; font-weight: 400; }
+    .project-hours { font-size: 0.82rem; color: #6e6e73; }
     .forfait-badge { background: #fff3cd; color: #856404; border-radius: 6px; padding: 2px 8px; font-size: 0.72rem; font-weight: 600; }
-    .client-right { display: flex; align-items: center; gap: 2rem; }
+    .project-right { display: flex; align-items: center; gap: 2rem; }
     .amount-block { text-align: right; }
     .amount-block .amt-label { font-size: 0.72rem; color: #6e6e73; text-transform: uppercase; }
-    .amount-block .amt-value { font-size: 1.1rem; font-weight: 700; }
+    .amount-block .amt-value { font-size: 1.05rem; font-weight: 700; }
     .amt-ht { color: #1d1d1f; }
     .amt-ttc { color: #34c759; }
     .toggle-icon { color: #c7c7cc; font-size: 1rem; transition: transform 0.2s; }
     .toggle-icon.open { transform: rotate(180deg); }
-    .client-tasks { display: none; border-top: 1px solid #f5f5f7; padding: 0.75rem 1.5rem; }
-    .client-tasks.open { display: block; }
-    .task-row { display: flex; justify-content: space-between; padding: 0.4rem 0; font-size: 0.85rem; border-bottom: 1px solid #f9f9f9; }
+    .project-tasks { display: none; background: #fafafa; padding: 0.6rem 1.5rem 0.6rem 2rem; }
+    .project-tasks.open { display: block; }
+    .task-row { display: flex; justify-content: space-between; padding: 0.35rem 0; font-size: 0.85rem; border-bottom: 1px solid #f0f0f0; }
     .task-row:last-child { border-bottom: none; }
     .task-desc { color: #3a3a3c; flex: 1; padding-right: 1rem; }
     .task-dur { color: #6e6e73; font-variant-numeric: tabular-nums; white-space: nowrap; }
     .rate-editor { display: flex; align-items: center; gap: 0.5rem; }
     .rate-input { width: 60px; padding: 0.2rem 0.4rem; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 0.85rem; text-align: right; }
+    .rate-label { font-size: 0.8rem; color: #6e6e73; }
     .rate-label { font-size: 0.8rem; color: #6e6e73; }
 
     .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid #e5e5ea; border-top-color: #1d1d1f; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5rem; }
@@ -315,45 +326,69 @@
       document.getElementById('total-ttc').textContent = fmt(totals.ttc);
       document.getElementById('period-label').textContent = periodLabel ? `Période : ${periodLabel}` : '';
 
-      document.getElementById('clients-grid').innerHTML = clientsData.map((c, i) => {
-        const ht = c.billed_hours * c.rate;
-        const hoursLabel = c.is_forfait
-          ? `Forfait 9h (réel : ${c.actual_duration})`
-          : `${c.actual_duration} tracées → <strong>${c.billed_hours}h retenues</strong>`;
+      // Grouper par client
+      const groups = {};
+      clientsData.forEach((c, i) => {
+        const cn = c.client_name || c.name || 'Sans client';
+        if (!groups[cn]) groups[cn] = [];
+        groups[cn].push({ ...c, _idx: i });
+      });
+
+      document.getElementById('clients-grid').innerHTML = Object.entries(groups).map(([clientName, projects]) => {
+        const groupHT  = projects.reduce((s, c) => s + c.billed_hours * c.rate, 0);
+        const groupTTC = groupHT * 1.20;
+
+        const projectsHtml = projects.map(c => {
+          const ht = c.billed_hours * c.rate;
+          const i  = c._idx;
+          const projLabel = c.project_name || '';
+          const hoursLabel = c.is_forfait
+            ? `Forfait ${c.billed_hours}h (réel : ${c.actual_duration})`
+            : `${c.actual_duration} tracées → <strong>${c.billed_hours}h retenues</strong>`;
+          return `
+          <div class="project-row">
+            <div class="project-header" onclick="toggleTasks(${i})">
+              <div class="project-left">
+                <div>
+                  <div class="project-name${projLabel ? '' : ' no-proj'}">${projLabel || 'Sans projet'}</div>
+                  <div class="project-hours">${hoursLabel}</div>
+                </div>
+                ${c.is_forfait ? '<span class="forfait-badge">Forfait</span>' : ''}
+              </div>
+              <div class="project-right">
+                <div class="rate-editor" onclick="event.stopPropagation()">
+                  <input class="rate-input" type="number" value="${c.rate}" min="0" step="0.5"
+                    onchange="updateRate(${i}, this.value)">
+                  <span class="rate-label">€/h HT</span>
+                </div>
+                <div class="amount-block">
+                  <div class="amt-label">HT</div>
+                  <div class="amt-value amt-ht" id="ht-${i}">${fmt(ht)}</div>
+                </div>
+                <div class="amount-block">
+                  <div class="amt-label">TTC</div>
+                  <div class="amt-value amt-ttc" id="ttc-${i}">${fmt(ht * 1.20)}</div>
+                </div>
+                <span class="toggle-icon" id="icon-${i}">▼</span>
+              </div>
+            </div>
+            <div class="project-tasks" id="tasks-${i}">
+              ${c.tasks && c.tasks.length ? c.tasks.map(t => `
+                <div class="task-row">
+                  <span class="task-desc">${t.description}</span>
+                  <span class="task-dur">${t.duration}</span>
+                </div>`).join('') : '<div style="color:#6e6e73;font-size:0.85rem;padding:0.5rem 0">Aucune tâche détaillée</div>'}
+            </div>
+          </div>`;
+        }).join('');
+
         return `
-        <div class="client-card">
-          <div class="client-header" onclick="toggleTasks(${i})">
-            <div class="client-left">
-              <div>
-                <div class="client-name">${c.name}</div>
-                <div class="client-hours">${hoursLabel}</div>
-              </div>
-              ${c.is_forfait ? '<span class="forfait-badge">Forfait mensuel</span>' : ''}
-            </div>
-            <div class="client-right">
-              <div class="rate-editor" onclick="event.stopPropagation()">
-                <input class="rate-input" type="number" value="${c.rate}" min="0" step="0.5"
-                  onchange="updateRate(${i}, this.value)">
-                <span class="rate-label">€/h HT</span>
-              </div>
-              <div class="amount-block">
-                <div class="amt-label">HT</div>
-                <div class="amt-value amt-ht" id="ht-${i}">${fmt(ht)}</div>
-              </div>
-              <div class="amount-block">
-                <div class="amt-label">TTC</div>
-                <div class="amt-value amt-ttc" id="ttc-${i}">${fmt(ht * 1.20)}</div>
-              </div>
-              <span class="toggle-icon" id="icon-${i}">▼</span>
-            </div>
+        <div class="client-group">
+          <div class="client-group-header">
+            <span class="client-group-name">${clientName}</span>
+            <span class="client-group-total">${fmt(groupHT)} HT · ${fmt(groupTTC)} TTC</span>
           </div>
-          <div class="client-tasks" id="tasks-${i}">
-            ${c.tasks.length ? c.tasks.map(t => `
-              <div class="task-row">
-                <span class="task-desc">${t.description}</span>
-                <span class="task-dur">${t.duration}</span>
-              </div>`).join('') : '<div style="color:#6e6e73;font-size:0.85rem;padding:0.5rem 0">Aucune tâche détaillée</div>'}
-          </div>
+          ${projectsHtml}
         </div>`;
       }).join('');
     }
@@ -362,6 +397,9 @@
       document.getElementById(`tasks-${i}`).classList.toggle('open');
       document.getElementById(`icon-${i}`).classList.toggle('open');
     }
+
+    // Le nom du champ est maintenant client_name ou name selon la source
+    function getClientName(c) { return c.client_name || c.name || 'Sans client'; }
 
     function updateRate(i, newRate) {
       clientsData[i].rate = parseFloat(newRate) || 0;

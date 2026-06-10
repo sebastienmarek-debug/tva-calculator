@@ -4,7 +4,10 @@ import pdfplumber
 
 DEFAULT_RATE = 35.0
 CLIENT_RATES = {"KATANA": 28.0}
-FORFAIT_CLIENTS = {"GFA": {"hours": 9.0, "rate": DEFAULT_RATE}}
+# Forfait par NOM DE PROJET (insensible à la casse, comparaison uppercase)
+FORFAIT_PROJECTS = {"FACEBOOK": {"hours": 9.0, "rate": DEFAULT_RATE}}
+# Gardé pour compatibilité PDF (groupé par client)
+FORFAIT_CLIENTS = {}
 
 
 def duration_to_hours(h, m, s):
@@ -108,8 +111,12 @@ def parse_toggl_pdf(filepath: str) -> list[dict]:
     result = []
     for name, data in clients.items():
         actual_h = data["actual_hours"]
-        is_forfait = name in FORFAIT_CLIENTS
-        if is_forfait:
+        # Pour le PDF, forfait peut être défini au niveau client OU projet
+        is_forfait = name in FORFAIT_CLIENTS or name in FORFAIT_PROJECTS
+        if name in FORFAIT_PROJECTS:
+            billed_h = FORFAIT_PROJECTS[name]["hours"]
+            rate = FORFAIT_PROJECTS[name]["rate"]
+        elif name in FORFAIT_CLIENTS:
             billed_h = FORFAIT_CLIENTS[name]["hours"]
             rate = FORFAIT_CLIENTS[name]["rate"]
         else:
