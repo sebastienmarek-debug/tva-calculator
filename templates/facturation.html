@@ -30,7 +30,7 @@
     /* Toggl API panel */
     #toggl-panel { background: white; border-radius: 16px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
     .toggl-panel-title { font-weight: 600; margin-bottom: 1rem; display: flex; align-items: center; gap: 0.5rem; }
-    .toggl-fields { display: grid; grid-template-columns: 1fr auto auto auto; gap: 0.75rem; align-items: end; }
+    .toggl-fields { display: grid; grid-template-columns: 1fr auto auto; gap: 0.75rem; align-items: end; }
     .field-group { display: flex; flex-direction: column; gap: 0.4rem; }
     .field-group label { font-size: 0.78rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.04em; }
     .field-group input, .field-group select {
@@ -78,38 +78,64 @@
 
     /* Group = un client avec 1..n projets */
     .client-group { background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; }
-    .client-group-header { padding: 0.75rem 1.5rem; background: #f5f5f7; border-bottom: 1px solid #e5e5ea; display: flex; align-items: center; justify-content: space-between; }
+    .client-group-header { padding: 0.65rem 1rem; background: #f5f5f7; border-bottom: 1px solid #e5e5ea; display: flex; align-items: center; justify-content: space-between; gap: 0.5rem; flex-wrap: wrap; }
     .client-group-name { font-size: 0.82rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.07em; color: #6e6e73; }
-    .client-group-total { font-size: 0.82rem; color: #6e6e73; }
+    .client-group-total { font-size: 0.82rem; color: #6e6e73; white-space: nowrap; }
 
     /* Chaque ligne = un projet */
     .project-row { border-bottom: 1px solid #f5f5f7; }
     .project-row:last-child { border-bottom: none; }
-    .project-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem 1.5rem; cursor: pointer; user-select: none; }
+
+    /* Layout desktop */
+    .project-header { display: flex; align-items: center; justify-content: space-between; padding: 1rem; cursor: pointer; user-select: none; gap: 0.75rem; }
     .project-header:hover { background: #fafafa; }
-    .project-left { display: flex; align-items: center; gap: 0.75rem; }
-    .project-name { font-size: 1rem; font-weight: 600; }
+    .project-left { flex: 1; min-width: 0; }
+    .project-name { font-size: 0.95rem; font-weight: 600; }
     .project-name.no-proj { font-style: italic; color: #6e6e73; font-weight: 400; }
-    .project-hours { font-size: 0.82rem; color: #6e6e73; }
-    .forfait-badge { background: #fff3cd; color: #856404; border-radius: 6px; padding: 2px 8px; font-size: 0.72rem; font-weight: 600; }
-    .project-right { display: flex; align-items: center; gap: 2rem; }
+    .project-hours { font-size: 0.8rem; color: #6e6e73; margin-top: 0.15rem; }
+    .forfait-badge { display: inline-block; background: #fff3cd; color: #856404; border-radius: 6px; padding: 1px 6px; font-size: 0.7rem; font-weight: 600; margin-top: 0.2rem; }
+
+    .project-right { display: flex; align-items: center; gap: 1rem; flex-shrink: 0; }
     .amount-block { text-align: right; }
-    .amount-block .amt-label { font-size: 0.72rem; color: #6e6e73; text-transform: uppercase; }
-    .amount-block .amt-value { font-size: 1.05rem; font-weight: 700; }
+    .amount-block .amt-label { font-size: 0.68rem; color: #6e6e73; text-transform: uppercase; }
+    .amount-block .amt-value { font-size: 1rem; font-weight: 700; }
     .amt-ht { color: #1d1d1f; }
     .amt-ttc { color: #34c759; }
-    .toggle-icon { color: #c7c7cc; font-size: 1rem; transition: transform 0.2s; }
+    .toggle-icon { color: #c7c7cc; font-size: 0.9rem; transition: transform 0.2s; flex-shrink: 0; }
     .toggle-icon.open { transform: rotate(180deg); }
-    .project-tasks { display: none; background: #fafafa; padding: 0.6rem 1.5rem 0.6rem 2rem; }
+
+    .rate-editor { display: flex; align-items: center; gap: 0.3rem; }
+    .rate-input { width: 52px; padding: 0.2rem 0.35rem; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 0.82rem; text-align: right; }
+    .rate-label { font-size: 0.75rem; color: #6e6e73; white-space: nowrap; }
+
+    .project-tasks { display: none; background: #fafafa; padding: 0.6rem 1rem; }
     .project-tasks.open { display: block; }
-    .task-row { display: flex; justify-content: space-between; padding: 0.35rem 0; font-size: 0.85rem; border-bottom: 1px solid #f0f0f0; }
+    .task-row { display: flex; justify-content: space-between; padding: 0.35rem 0; font-size: 0.82rem; border-bottom: 1px solid #f0f0f0; gap: 0.5rem; }
     .task-row:last-child { border-bottom: none; }
-    .task-desc { color: #3a3a3c; flex: 1; padding-right: 1rem; }
-    .task-dur { color: #6e6e73; font-variant-numeric: tabular-nums; white-space: nowrap; }
-    .rate-editor { display: flex; align-items: center; gap: 0.5rem; }
-    .rate-input { width: 60px; padding: 0.2rem 0.4rem; border: 1px solid #d1d1d6; border-radius: 6px; font-size: 0.85rem; text-align: right; }
-    .rate-label { font-size: 0.8rem; color: #6e6e73; }
-    .rate-label { font-size: 0.8rem; color: #6e6e73; }
+    .task-desc { color: #3a3a3c; flex: 1; min-width: 0; word-break: break-word; }
+    .task-dur { color: #6e6e73; font-variant-numeric: tabular-nums; white-space: nowrap; flex-shrink: 0; }
+
+    /* ── Mobile ────────────────────────────────────────────────── */
+    @media (max-width: 600px) {
+      .container { padding: 1rem; }
+
+      /* Connexion panel */
+      .toggl-fields { grid-template-columns: 1fr 1fr !important; }
+      .toggl-fields > .field-group:first-child { grid-column: 1 / -1; }
+      .btn-fetch { grid-column: 1 / -1; width: 100%; }
+
+      /* Totaux */
+      .total-cards { grid-template-columns: 1fr !important; gap: 0.6rem; }
+      .card .value { font-size: 1.6rem; }
+
+      /* Carte projet : empiler gauche / droite */
+      .project-header { flex-direction: column; align-items: stretch; padding: 0.9rem 1rem; }
+      .project-right { justify-content: space-between; margin-top: 0.6rem; border-top: 1px solid #f0f0f0; padding-top: 0.6rem; }
+      .toggle-icon { display: none; } /* remplacé par tap sur toute la carte */
+
+      /* Montants plus grands sur mobile */
+      .amount-block .amt-value { font-size: 1.05rem; }
+    }
 
     .spinner { display: inline-block; width: 28px; height: 28px; border: 3px solid #e5e5ea; border-top-color: #1d1d1f; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5rem; }
     @keyframes spin { to { transform: rotate(360deg); } }
