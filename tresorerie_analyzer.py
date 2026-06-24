@@ -35,25 +35,6 @@ NORMALIZE_PATTERNS = [
     (r"APRIL\s+SANTE|APRIL\s+PRE", "April Santé (mutuelle)"),
 ]
 
-# Virements clients (revenus) à exclure des débits récurrents
-# Ces entrées sont des encaissements clients trackés dans Toggl
-REVENUE_PATTERNS = [
-    r"DREAM\s*ACT",
-    r"MEET\s*YOUR\s*MARKET",
-    r"JOIA\s*TIME",
-    r"AGENCE\s*TAPIS\s*ROUGE",
-    r"GRAVELAT",
-    r"KATANA",
-    r"CLJ\s*BUSINESS",
-    r"LYDIA\s*SOLUTIONS",
-    r"APR\s*MOTOR",
-    r"GENICADO",
-]
-
-def is_revenue(label: str) -> bool:
-    """Retourne True si ce libellé est un encaissement client (à exclure des débits)."""
-    up = label.upper()
-    return any(re.search(p, up) for p in REVENUE_PATTERNS)
 
 def normalize_label(label: str) -> str:
     """Normalise un libellé pour regrouper les transactions similaires."""
@@ -127,7 +108,8 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
         month_key = f"{d.year}-{d.month:02d}"
         norm = normalize_label(tx.label)
 
-        if tx.debit and tx.debit > 0 and not is_revenue(tx.label):
+        # On ne regarde QUE la colonne débit — la colonne crédit est ignorée
+        if tx.debit and tx.debit > 0:
             debit_groups[norm][month_key].append(tx.debit)
             debit_days[norm].append(d.day)
         if tx.credit and tx.credit > 0:
