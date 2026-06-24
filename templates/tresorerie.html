@@ -85,15 +85,6 @@
     /* Sections résumé */
     .section-title { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; margin-bottom: 0.75rem; margin-top: 1.5rem; }
 
-    /* Historique mensuel */
-    .month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 0.5rem; }
-    .month-card { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
-    .month-card .mc-month { font-size: 0.75rem; color: #6e6e73; text-transform: uppercase; margin-bottom: 0.4rem; }
-    .month-card .mc-net { font-size: 1.1rem; font-weight: 700; }
-    .mc-net.pos { color: #34c759; }
-    .mc-net.neg { color: #ff3b30; }
-    .month-card .mc-detail { font-size: 0.75rem; color: #6e6e73; margin-top: 0.2rem; }
-
     /* Tableau récurrences */
     .recur-table { background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; margin-bottom: 1rem; }
     .recur-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid #f5f5f7; gap: 1rem; }
@@ -242,10 +233,6 @@
         </div>
         <div class="tva-amount" id="tva-amount">—</div>
       </div>
-
-      <!-- Historique mensuel -->
-      <div class="section-title">📅 Historique des 6 derniers mois</div>
-      <div class="month-grid" id="month-grid"></div>
 
       <!-- Dépenses récurrentes -->
       <div class="section-title">🔄 Dépenses récurrentes identifiées</div>
@@ -421,7 +408,8 @@
 
       // Dépenses récurrentes (hors DGFIP TVA qu'on traite séparément)
       const recurWithoutTVA = data.recurring_debits.filter(d => !d.label.includes('DGFIP'));
-      const totalRecurDebits = recurWithoutTVA.reduce((s, d) => s + d.avg_amount, 0);
+      // Utiliser estimated_amount (dernier mois connu) pour la prévision
+      const totalRecurDebits = recurWithoutTVA.reduce((s, d) => s + (d.estimated_amount || d.avg_amount), 0);
 
       // Prévision
       const debutMois  = solde;
@@ -456,26 +444,22 @@
       document.getElementById('tva-amount').textContent = tvaNette > 0 ? `− ${fmt(tvaNette)}` : `Crédit ${fmt(Math.abs(tvaNette))}`;
       document.getElementById('tva-amount').style.color = tvaNette > 0 ? '#e65100' : '#34c759';
 
-      // Historique mensuel
-      document.getElementById('month-grid').innerHTML = data.monthly_summary.map(ms => {
-        const [my, mm] = ms.month.split('-').map(Number);
-        const net = ms.net;
-        return `<div class="month-card">
-          <div class="mc-month">${MONTH_NAMES[mm-1]} ${my}</div>
-          <div class="mc-net ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmt(net)}</div>
-          <div class="mc-detail">+${fmt(ms.total_credit)} / −${fmt(ms.total_debit)}</div>
-        </div>`;
-      }).join('');
-
       // Récurrences débits
       const dt = document.getElementById('recur-debits');
-      dt.innerHTML = `<div class="recur-row header"><span>Libellé</span><span>Montant moyen</span><span>Nb mois</span></div>` +
-        recurWithoutTVA.map(d => `
-        <div class="recur-row">
-          <div><div class="rr-label">${d.label}</div><div class="rr-day">vers le ${d.avg_day}</div></div>
-          <div class="rr-amount debit">− ${fmt(d.avg_amount)}</div>
-          <div class="rr-seen">${d.months_seen} mois</div>
-        </div>`).join('');
+      dt.innerHTML = `<div class="recur-row header"><span>Libellé</span><span>Estimation mois prochain</span><span>Nb mois</span></div>` +
+        recurWithoutTVA.map(d => {
+          const est = d.estimated_amount || d.avg_amount;
+          const showAvg = Math.abs(est - d.avg_amount) > 1;
+          return `
+          <div class="recur-row">
+            <div>
+              <div class="rr-label">${d.label}</div>
+              <div class="rr-day">vers le ${d.avg_day}${showAvg ? ` · moy. ${fmt(d.avg_amount)}` : ''}</div>
+            </div>
+            <div class="rr-amount debit">− ${fmt(est)}</div>
+            <div class="rr-seen">${d.months_seen} mois</div>
+          </div>`;
+        }).join('');
 
       // Récurrences crédits
       const ct = document.getElementById('recur-credits');
