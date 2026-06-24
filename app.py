@@ -232,17 +232,17 @@ def tresorerie():
 def tresorerie_analyze():
     files = request.files.getlist("files")
     if not files or all(f.filename == "" for f in files):
-        return jsonify({"error": "Aucun relevé PDF fourni"}), 400
+        return jsonify({"error": "Aucun fichier fourni"}), 400
 
     paths = []
     for f in files:
-        if f.filename.endswith(".pdf"):
+        if f.filename.lower().endswith((".pdf", ".xlsx", ".xls")):
             path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
             f.save(path)
             paths.append(path)
 
     if not paths:
-        return jsonify({"error": "Fichiers PDF requis"}), 400
+        return jsonify({"error": "Fichiers PDF ou Excel requis"}), 400
 
     try:
         result = analyze_cash_flow(paths)

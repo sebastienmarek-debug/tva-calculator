@@ -52,18 +52,23 @@ def parse_date(tx: Transaction) -> datetime | None:
         return None
 
 
-def analyze_cash_flow(pdf_paths: list[str]) -> dict:
+def analyze_cash_flow(file_paths: list[str]) -> dict:
     """
-    Analyse plusieurs relevés PDF et retourne :
-    - recurring_debits  : dépenses récurrentes [{label, amount, day, months_seen, category}]
-    - recurring_credits : recettes récurrentes [{label, amount, day, months_seen}]
+    Analyse plusieurs relevés (PDF ou Excel .xlsx) et retourne :
+    - recurring_debits  : dépenses récurrentes
+    - recurring_credits : recettes récurrentes
     - monthly_summary   : [{month, total_debit, total_credit, net}]
     - tva_info          : {collected, deductible, net_due}
     """
+    from excel_parser import parse_excel_statement
+
     all_txs: list[Transaction] = []
-    for path in pdf_paths:
+    for path in file_paths:
         try:
-            txs = parse_pdf_reliable(path)
+            if path.lower().endswith(('.xlsx', '.xls')):
+                txs = parse_excel_statement(path)
+            else:
+                txs = parse_pdf_reliable(path)
             all_txs.extend(txs)
         except Exception:
             pass

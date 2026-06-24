@@ -151,9 +151,9 @@
       <div id="file-list"></div>
       <div class="drop-zone" id="drop-zone" onclick="document.getElementById('pdf-input').click()">
         <div class="dz-icon">📂</div>
-        <strong>Déposez vos relevés Crédit Mutuel PDF</strong>
-        <p>1 à 6 fichiers — plus vous en donnez, plus la prévision est précise</p>
-        <input type="file" id="pdf-input" accept=".pdf" multiple style="display:none">
+        <strong>Déposez vos relevés Crédit Mutuel</strong>
+        <p>Fichiers Excel (.xlsx) ou PDF — 1 à 6 mois, plus il y en a, plus c'est précis</p>
+        <input type="file" id="pdf-input" accept=".pdf,.xlsx,.xls" multiple style="display:none">
       </div>
 
       <div class="panel-title" style="margin-top:1rem">💼 Revenus prévus le mois prochain</div>
@@ -303,7 +303,7 @@
     pdfInput.addEventListener('change', () => addFiles([...pdfInput.files]));
 
     function addFiles(files) {
-      files.filter(f => f.name.endsWith('.pdf')).forEach(f => {
+      files.filter(f => f.name.match(/\.(pdf|xlsx|xls)$/i)).forEach(f => {
         if (!selectedFiles.find(x => x.name === f.name)) selectedFiles.push(f);
       });
       renderFileList();
