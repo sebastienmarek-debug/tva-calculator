@@ -8,6 +8,7 @@ from flask import Flask, request, jsonify, render_template, session
 from werkzeug.utils import secure_filename
 from parser import parse_pdf_reliable, Transaction
 from toggl_parser import parse_toggl_pdf, DEFAULT_RATE, CLIENT_RATES, FORFAIT_CLIENTS, FORFAIT_PROJECTS
+from tresorerie_analyzer import analyze_cash_flow
 
 app = Flask(__name__)
 app.secret_key = os.environ.get("SECRET_KEY", "dev-secret-change-me")
@@ -220,6 +221,35 @@ def facturation_toggl():
     # Trier : client puis projet
     clients.sort(key=lambda x: (x["client_name"], x["project_name"]))
     return jsonify({"clients": clients})
+
+
+@app.route("/tresorerie")
+def tresorerie():
+    return render_template("tresorerie.html")
+
+
+@app.route("/tresorerie/analyze", methods=["POST"])
+def tresorerie_analyze():
+    files = request.files.getlist("files")
+    if not files or all(f.filename == "" for f in files):
+        return jsonify({"error": "Aucun relevé PDF fourni"}), 400
+
+    paths = []
+    for f in files:
+        if f.filename.endswith(".pdf"):
+            path = os.path.join(UPLOAD_FOLDER, secure_filename(f.filename))
+            f.save(path)
+            paths.append(path)
+
+    if not paths:
+        return jsonify({"error": "Fichiers PDF requis"}), 400
+
+    try:
+        result = analyze_cash_flow(paths)
+    except Exception as e:
+        return jsonify({"error": f"Erreur d'analyse: {str(e)}"}), 500
+
+    return jsonify(result)
 
 
 @app.route("/upload", methods=["POST"])

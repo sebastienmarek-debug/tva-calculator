@@ -1,0 +1,508 @@
+<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Trésorerie — Outils de Counie</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f7; color: #1d1d1f; }
+
+    header {
+      background: white; padding: 1.5rem 2rem;
+      display: flex; flex-direction: column; align-items: center; gap: 0.5rem;
+      border-bottom: 1px solid #e5e5ea; box-shadow: 0 1px 6px rgba(0,0,0,0.06);
+      position: relative;
+    }
+    header img { height: 70px; object-fit: contain; }
+    header h1 { font-size: 1.25rem; font-weight: 700; color: #1d1d1f; }
+    header h1 span { color: #c0748a; }
+    .back-link { position: absolute; left: 1.5rem; top: 50%; transform: translateY(-50%); text-decoration: none; color: #6e6e73; font-size: 0.85rem; }
+    .back-link:hover { color: #1d1d1f; }
+
+    .container { max-width: 960px; margin: 0 auto; padding: 2rem; }
+
+    /* ── Panneau de saisie ── */
+    .input-panel { background: white; border-radius: 16px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); margin-bottom: 1.5rem; }
+    .panel-title { font-weight: 600; font-size: 1rem; margin-bottom: 1.25rem; display: flex; align-items: center; gap: 0.5rem; }
+
+    .fields-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1rem; }
+    .field-group { display: flex; flex-direction: column; gap: 0.4rem; }
+    .field-group label { font-size: 0.78rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.04em; }
+    .field-group input, .field-group select {
+      padding: 0.55rem 0.8rem; border: 1px solid #d1d1d6; border-radius: 10px;
+      font-size: 0.9rem; font-family: inherit; background: white;
+    }
+    .field-hint { font-size: 0.75rem; color: #6e6e73; margin-top: 0.3rem; }
+
+    /* Drop zone PDF */
+    .drop-zone {
+      border: 2px dashed #c7c7cc; border-radius: 12px; padding: 2rem 1.5rem;
+      text-align: center; cursor: pointer; transition: all 0.2s; margin-bottom: 1rem;
+    }
+    .drop-zone:hover, .drop-zone.drag-over { border-color: #007aff; background: #f0f6ff; }
+    .drop-zone .dz-icon { font-size: 2rem; margin-bottom: 0.5rem; }
+    .drop-zone p { font-size: 0.88rem; color: #6e6e73; margin-top: 0.3rem; }
+    #file-list { display: flex; flex-wrap: wrap; gap: 0.5rem; margin-bottom: 0.75rem; }
+    .file-chip { background: #e8f5e9; color: #2e7d32; border-radius: 20px; padding: 0.25rem 0.75rem; font-size: 0.8rem; display: flex; align-items: center; gap: 0.4rem; }
+    .file-chip .rm { cursor: pointer; color: #888; font-size: 0.9rem; }
+    .file-chip .rm:hover { color: #cc0000; }
+
+    /* Revenus */
+    .revenue-row { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 0.75rem; }
+    .revenue-source { display: flex; gap: 0; background: #f5f5f7; border-radius: 10px; padding: 0.3rem; margin-bottom: 0.75rem; width: fit-content; }
+    .rev-tab { padding: 0.4rem 1rem; border-radius: 7px; border: none; background: none; cursor: pointer; font-size: 0.85rem; color: #6e6e73; font-family: inherit; }
+    .rev-tab.active { background: white; color: #1d1d1f; font-weight: 500; box-shadow: 0 1px 3px rgba(0,0,0,0.1); }
+
+    .btn-analyze {
+      width: 100%; padding: 0.75rem; background: #1d1d1f; color: white; border: none;
+      border-radius: 12px; cursor: pointer; font-size: 0.95rem; font-weight: 600; font-family: inherit;
+    }
+    .btn-analyze:hover { background: #3a3a3c; }
+    .btn-analyze:disabled { background: #c7c7cc; cursor: not-allowed; }
+
+    /* ── Résultats ── */
+    #results { display: none; }
+
+    /* Forecast cards */
+    .forecast-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 1rem; margin-bottom: 1.5rem; }
+    .forecast-card { background: white; border-radius: 16px; padding: 1.5rem; box-shadow: 0 2px 8px rgba(0,0,0,0.06); }
+    .fc-label { font-size: 0.78rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.05em; margin-bottom: 0.5rem; }
+    .fc-amount { font-size: 2rem; font-weight: 700; }
+    .fc-amount.positive { color: #34c759; }
+    .fc-amount.warning  { color: #ff9500; }
+    .fc-amount.negative { color: #ff3b30; }
+    .fc-sub { font-size: 0.8rem; color: #6e6e73; margin-top: 0.4rem; }
+
+    /* Timeline TVA */
+    .tva-banner { background: #fff8e1; border: 1px solid #ffe082; border-radius: 12px; padding: 1rem 1.25rem; margin-bottom: 1.5rem; display: flex; align-items: center; gap: 1rem; flex-wrap: wrap; }
+    .tva-banner .tva-icon { font-size: 1.5rem; }
+    .tva-banner .tva-text { flex: 1; }
+    .tva-banner .tva-title { font-weight: 600; font-size: 0.9rem; }
+    .tva-banner .tva-detail { font-size: 0.82rem; color: #6e6e73; margin-top: 0.2rem; }
+    .tva-amount { font-size: 1.3rem; font-weight: 700; color: #e65100; white-space: nowrap; }
+
+    /* Sections résumé */
+    .section-title { font-size: 0.85rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.06em; color: #6e6e73; margin-bottom: 0.75rem; margin-top: 1.5rem; }
+
+    /* Historique mensuel */
+    .month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 0.75rem; margin-bottom: 0.5rem; }
+    .month-card { background: white; border-radius: 12px; padding: 1rem; box-shadow: 0 1px 4px rgba(0,0,0,0.06); }
+    .month-card .mc-month { font-size: 0.75rem; color: #6e6e73; text-transform: uppercase; margin-bottom: 0.4rem; }
+    .month-card .mc-net { font-size: 1.1rem; font-weight: 700; }
+    .mc-net.pos { color: #34c759; }
+    .mc-net.neg { color: #ff3b30; }
+    .month-card .mc-detail { font-size: 0.75rem; color: #6e6e73; margin-top: 0.2rem; }
+
+    /* Tableau récurrences */
+    .recur-table { background: white; border-radius: 16px; box-shadow: 0 2px 8px rgba(0,0,0,0.06); overflow: hidden; margin-bottom: 1rem; }
+    .recur-row { display: grid; grid-template-columns: 1fr auto auto; align-items: center; padding: 0.75rem 1.25rem; border-bottom: 1px solid #f5f5f7; gap: 1rem; }
+    .recur-row:last-child { border-bottom: none; }
+    .recur-row.header { background: #f5f5f7; font-size: 0.72rem; color: #6e6e73; text-transform: uppercase; letter-spacing: 0.05em; padding: 0.5rem 1.25rem; }
+    .rr-label { font-size: 0.88rem; font-weight: 500; }
+    .rr-day { font-size: 0.78rem; color: #6e6e73; }
+    .rr-amount { font-size: 0.95rem; font-weight: 700; text-align: right; white-space: nowrap; }
+    .rr-amount.debit  { color: #ff3b30; }
+    .rr-amount.credit { color: #34c759; }
+    .rr-seen { font-size: 0.72rem; color: #c7c7cc; text-align: right; }
+
+    .spinner { display: inline-block; width: 22px; height: 22px; border: 3px solid #e5e5ea; border-top-color: #1d1d1f; border-radius: 50%; animation: spin 0.8s linear infinite; vertical-align: middle; margin-right: 0.5rem; }
+    @keyframes spin { to { transform: rotate(360deg); } }
+    .error-msg { background: #fff0f0; border: 1px solid #ffb3b3; border-radius: 10px; padding: 0.75rem 1rem; color: #cc0000; font-size: 0.9rem; margin-bottom: 1rem; display: none; }
+
+    /* ── Responsive ── */
+    @media (max-width: 600px) {
+      .container { padding: 1rem; }
+      .fields-row, .revenue-row { grid-template-columns: 1fr; }
+      .forecast-grid { grid-template-columns: 1fr; }
+      .recur-row { grid-template-columns: 1fr auto; }
+      .rr-seen { display: none; }
+    }
+  </style>
+</head>
+<body>
+  <header>
+    <a href="/" class="back-link">← Accueil</a>
+    <img src="/static/logo.png" alt="Agence Symétrie Assistanat">
+    <h1>Trésorerie <span>♥</span></h1>
+  </header>
+
+  <div class="container">
+
+    <!-- ── Panneau de saisie ── -->
+    <div class="input-panel">
+      <div class="panel-title">🏦 Situation actuelle</div>
+
+      <div class="fields-row">
+        <div class="field-group">
+          <label>Solde actuel du compte (€)</label>
+          <input type="number" id="solde-actuel" placeholder="ex: 1900.31" step="0.01">
+          <div class="field-hint">Solde du compte pro ce jour</div>
+        </div>
+        <div class="field-group">
+          <label>Mois à prévoir</label>
+          <input type="month" id="mois-prevision">
+          <div class="field-hint">Mois pour lequel faire la prévision</div>
+        </div>
+      </div>
+
+      <div class="panel-title" style="margin-top:1rem">📄 Relevés bancaires (jusqu'à 6 mois)</div>
+
+      <div id="file-list"></div>
+      <div class="drop-zone" id="drop-zone" onclick="document.getElementById('pdf-input').click()">
+        <div class="dz-icon">📂</div>
+        <strong>Déposez vos relevés Crédit Mutuel PDF</strong>
+        <p>1 à 6 fichiers — plus vous en donnez, plus la prévision est précise</p>
+        <input type="file" id="pdf-input" accept=".pdf" multiple style="display:none">
+      </div>
+
+      <div class="panel-title" style="margin-top:1rem">💼 Revenus prévus le mois prochain</div>
+
+      <div class="revenue-source">
+        <button class="rev-tab active" onclick="setRevMode('manual')">✏️ Manuel</button>
+        <button class="rev-tab" onclick="setRevMode('toggl')">🔗 Depuis Toggl</button>
+      </div>
+
+      <div id="rev-manual">
+        <div class="revenue-row">
+          <div class="field-group">
+            <label>Revenus HT estimés (€)</label>
+            <input type="number" id="rev-ht" placeholder="ex: 2500" step="0.01">
+          </div>
+          <div class="field-group">
+            <label>Dont TVA collectée (€)</label>
+            <input type="number" id="rev-tva-col" placeholder="calculé auto" step="0.01" readonly style="background:#f9f9f9">
+            <div class="field-hint">= Revenus HT × 20%</div>
+          </div>
+        </div>
+      </div>
+
+      <div id="rev-toggl" style="display:none">
+        <div class="revenue-row">
+          <div class="field-group">
+            <label>Token API Toggl</label>
+            <input type="password" id="rev-token" placeholder="Votre token API">
+          </div>
+          <div class="field-group">
+            <label>Mois Toggl à utiliser</label>
+            <input type="month" id="rev-toggl-month">
+          </div>
+        </div>
+        <button class="btn-analyze" style="margin-bottom:0.75rem;background:#5c5ce0" onclick="fetchTogglRevenue()" id="btn-toggl-rev">
+          Récupérer les revenus Toggl
+        </button>
+        <div id="toggl-rev-result" style="font-size:0.85rem;color:#34c759;display:none"></div>
+      </div>
+
+      <div class="error-msg" id="error-msg"></div>
+
+      <button class="btn-analyze" onclick="analyze()" id="btn-analyze">
+        Calculer la prévision
+      </button>
+    </div>
+
+    <!-- ── Résultats ── -->
+    <div id="results">
+
+      <!-- Forecast début / fin mois -->
+      <div class="section-title">📊 Prévision — <span id="mois-label">mois prochain</span></div>
+      <div class="forecast-grid">
+        <div class="forecast-card">
+          <div class="fc-label">💰 Solde début de mois</div>
+          <div class="fc-amount" id="fc-debut">—</div>
+          <div class="fc-sub" id="fc-debut-sub"></div>
+        </div>
+        <div class="forecast-card">
+          <div class="fc-label">🏁 Solde fin de mois estimé</div>
+          <div class="fc-amount" id="fc-fin">—</div>
+          <div class="fc-sub" id="fc-fin-sub"></div>
+        </div>
+      </div>
+
+      <!-- Détail flux -->
+      <div class="forecast-grid">
+        <div class="forecast-card">
+          <div class="fc-label">📥 Encaissements prévus</div>
+          <div class="fc-amount positive" id="fc-encaiss">—</div>
+          <div class="fc-sub">Revenus TTC (HT + TVA collectée)</div>
+        </div>
+        <div class="forecast-card">
+          <div class="fc-label">📤 Décaissements récurrents</div>
+          <div class="fc-amount negative" id="fc-decaiss">—</div>
+          <div class="fc-sub">Charges récurrentes identifiées</div>
+        </div>
+      </div>
+
+      <!-- TVA due -->
+      <div class="tva-banner" id="tva-banner">
+        <div class="tva-icon">🧾</div>
+        <div class="tva-text">
+          <div class="tva-title">TVA à payer (mois précédent) — vers le 19 du mois</div>
+          <div class="tva-detail" id="tva-detail">—</div>
+        </div>
+        <div class="tva-amount" id="tva-amount">—</div>
+      </div>
+
+      <!-- Historique mensuel -->
+      <div class="section-title">📅 Historique des 6 derniers mois</div>
+      <div class="month-grid" id="month-grid"></div>
+
+      <!-- Dépenses récurrentes -->
+      <div class="section-title">🔄 Dépenses récurrentes identifiées</div>
+      <div class="recur-table" id="recur-debits">
+        <div class="recur-row header">
+          <span>Libellé</span><span>Montant moyen</span><span>Nb mois</span>
+        </div>
+      </div>
+
+      <!-- Recettes récurrentes -->
+      <div class="section-title">📈 Recettes récurrentes identifiées</div>
+      <div class="recur-table" id="recur-credits">
+        <div class="recur-row header">
+          <span>Client</span><span>Montant moyen</span><span>Nb mois</span>
+        </div>
+      </div>
+
+    </div><!-- /results -->
+  </div>
+
+  <script>
+    const fmt = v => v.toLocaleString('fr-FR', {minimumFractionDigits:2, maximumFractionDigits:2}) + ' €';
+    const MONTH_NAMES = ['Janvier','Février','Mars','Avril','Mai','Juin','Juillet','Août','Septembre','Octobre','Novembre','Décembre'];
+
+    // ── Init ──────────────────────────────────────────────────────────────
+    const now = new Date();
+    const nextM = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    document.getElementById('mois-prevision').value =
+      `${nextM.getFullYear()}-${String(nextM.getMonth()+1).padStart(2,'0')}`;
+    document.getElementById('rev-toggl-month').value =
+      `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,'0')}`;
+
+    // Restore token
+    const savedToken = localStorage.getItem('toggl_api_token');
+    if (savedToken) document.getElementById('rev-token').value = savedToken;
+
+    // TVA collectée auto depuis revenus HT
+    document.getElementById('rev-ht').addEventListener('input', e => {
+      const ht = parseFloat(e.target.value) || 0;
+      document.getElementById('rev-tva-col').value = ht > 0 ? (ht * 0.20).toFixed(2) : '';
+    });
+
+    // ── Fichiers PDF ──────────────────────────────────────────────────────
+    let selectedFiles = [];
+
+    const dropZone = document.getElementById('drop-zone');
+    const pdfInput = document.getElementById('pdf-input');
+
+    dropZone.addEventListener('dragover', e => { e.preventDefault(); dropZone.classList.add('drag-over'); });
+    dropZone.addEventListener('dragleave', () => dropZone.classList.remove('drag-over'));
+    dropZone.addEventListener('drop', e => {
+      e.preventDefault(); dropZone.classList.remove('drag-over');
+      addFiles([...e.dataTransfer.files]);
+    });
+    pdfInput.addEventListener('change', () => addFiles([...pdfInput.files]));
+
+    function addFiles(files) {
+      files.filter(f => f.name.endsWith('.pdf')).forEach(f => {
+        if (!selectedFiles.find(x => x.name === f.name)) selectedFiles.push(f);
+      });
+      renderFileList();
+    }
+
+    function removeFile(name) {
+      selectedFiles = selectedFiles.filter(f => f.name !== name);
+      renderFileList();
+    }
+
+    function renderFileList() {
+      const el = document.getElementById('file-list');
+      el.innerHTML = selectedFiles.map(f => `
+        <div class="file-chip">
+          📄 ${f.name}
+          <span class="rm" onclick="removeFile('${f.name}')">×</span>
+        </div>`).join('');
+    }
+
+    // ── Mode revenus ──────────────────────────────────────────────────────
+    let revMode = 'manual';
+    let togglRevHT = 0;
+
+    function setRevMode(mode) {
+      revMode = mode;
+      document.querySelectorAll('.rev-tab').forEach((t, i) =>
+        t.classList.toggle('active', (i===0 && mode==='manual') || (i===1 && mode==='toggl')));
+      document.getElementById('rev-manual').style.display = mode === 'manual' ? 'block' : 'none';
+      document.getElementById('rev-toggl').style.display  = mode === 'toggl'  ? 'block' : 'none';
+    }
+
+    // Meta cache (même que facturation.html)
+    const META_KEY = 'toggl_meta_v1';
+    function getMeta() { try { return JSON.parse(localStorage.getItem(META_KEY)||'null'); } catch { return null; } }
+    function saveMeta(m) { localStorage.setItem(META_KEY, JSON.stringify(m)); }
+
+    async function ensureMeta(token) {
+      const cached = getMeta();
+      if (cached && cached.token === token) return { ok: true, meta: cached };
+      const res = await fetch('/facturation/toggl/meta', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ token }),
+      });
+      const data = await res.json();
+      if (data.error) return { ok: false, error: data.error };
+      saveMeta({ token, ...data });
+      return { ok: true, meta: { token, ...data } };
+    }
+
+    async function fetchTogglRevenue() {
+      const token = document.getElementById('rev-token').value.trim();
+      const month = document.getElementById('rev-toggl-month').value;
+      if (!token || !month) { showError('Token et mois requis'); return; }
+
+      localStorage.setItem('toggl_api_token', token);
+      const btn = document.getElementById('btn-toggl-rev');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Connexion…';
+
+      const { ok, meta, error } = await ensureMeta(token);
+      if (!ok) { showError(error); btn.disabled = false; btn.textContent = 'Récupérer les revenus Toggl'; return; }
+
+      const [y, m] = month.split('-').map(Number);
+      const start = `${y}-${String(m).padStart(2,'0')}-01`;
+      const lastDay = new Date(y, m, 0).getDate();
+      const end = `${y}-${String(m).padStart(2,'0')}-${String(lastDay).padStart(2,'0')}`;
+
+      btn.innerHTML = '<span class="spinner"></span>Récupération…';
+      const res = await fetch('/facturation/toggl', {
+        method: 'POST', headers: {'Content-Type':'application/json'},
+        body: JSON.stringify({ token, start_date: start, end_date: end,
+          workspace_id: meta.workspace_id, client_map: meta.client_map, project_map: meta.project_map }),
+      });
+      const data = await res.json();
+      btn.disabled = false; btn.textContent = 'Récupérer les revenus Toggl';
+
+      if (data.error) { showError(data.error); return; }
+
+      togglRevHT = data.clients.reduce((s, c) => s + c.ht, 0);
+      const togglTVA = togglRevHT * 0.20;
+      const el = document.getElementById('toggl-rev-result');
+      el.style.display = 'block';
+      el.textContent = `✓ ${fmt(togglRevHT)} HT — TVA collectée : ${fmt(togglTVA)}`;
+    }
+
+    // ── Analyse principale ────────────────────────────────────────────────
+    async function analyze() {
+      const solde = parseFloat(document.getElementById('solde-actuel').value);
+      if (isNaN(solde)) { showError('Veuillez entrer le solde actuel du compte'); return; }
+      if (selectedFiles.length === 0) { showError('Veuillez ajouter au moins un relevé PDF'); return; }
+
+      const btn = document.getElementById('btn-analyze');
+      btn.disabled = true; btn.innerHTML = '<span class="spinner"></span>Analyse en cours…';
+      hideError();
+
+      const fd = new FormData();
+      selectedFiles.forEach(f => fd.append('files', f));
+      const res = await fetch('/tresorerie/analyze', { method: 'POST', body: fd });
+      const data = await res.json();
+
+      btn.disabled = false; btn.textContent = 'Calculer la prévision';
+      if (data.error) { showError(data.error); return; }
+
+      // Revenus
+      let revHT = 0;
+      if (revMode === 'toggl') {
+        revHT = togglRevHT;
+      } else {
+        revHT = parseFloat(document.getElementById('rev-ht').value) || 0;
+      }
+      const revTTC = revHT * 1.20;
+      const revTVAcol = revHT * 0.20;
+
+      // TVA nette à payer (du mois analysé)
+      const tvaNette = data.tva_info.net_due;
+
+      // Dépenses récurrentes (hors DGFIP TVA qu'on traite séparément)
+      const recurWithoutTVA = data.recurring_debits.filter(d => !d.label.includes('DGFIP'));
+      const totalRecurDebits = recurWithoutTVA.reduce((s, d) => s + d.avg_amount, 0);
+
+      // Prévision
+      const debutMois  = solde;
+      const finMois    = debutMois + revTTC - totalRecurDebits - Math.max(0, tvaNette);
+
+      renderResults({ data, solde, debutMois, finMois, revTTC, revTVAcol, totalRecurDebits, tvaNette, recurWithoutTVA });
+    }
+
+    function renderResults({ data, solde, debutMois, finMois, revTTC, revTVAcol, totalRecurDebits, tvaNette, recurWithoutTVA }) {
+      const moisPrev = document.getElementById('mois-prevision').value;
+      const [y, m] = moisPrev ? moisPrev.split('-').map(Number) : [0, 0];
+      const moisLabel = moisPrev ? `${MONTH_NAMES[m-1]} ${y}` : 'Mois prochain';
+      document.getElementById('mois-label').textContent = moisLabel;
+
+      // Forecast cards
+      setAmount('fc-debut', debutMois);
+      document.getElementById('fc-debut-sub').textContent = `Solde actuel + encaissements en attente`;
+
+      setAmount('fc-fin', finMois);
+      document.getElementById('fc-fin-sub').textContent =
+        `${fmt(revTTC)} encaissés − ${fmt(totalRecurDebits)} charges − ${fmt(Math.max(0,tvaNette))} TVA`;
+
+      document.getElementById('fc-encaiss').textContent = fmt(revTTC);
+      document.getElementById('fc-decaiss').textContent = fmt(totalRecurDebits);
+
+      // TVA banner
+      const tvaMonth = data.tva_info.month;
+      const [ty, tm] = tvaMonth ? tvaMonth.split('-').map(Number) : [0,0];
+      document.getElementById('tva-detail').textContent =
+        `TVA collectée ${fmt(data.tva_info.collected)} − TVA déductible ${fmt(data.tva_info.deductible)}` +
+        (tvaMonth ? ` (${MONTH_NAMES[tm-1]} ${ty})` : '');
+      document.getElementById('tva-amount').textContent = tvaNette > 0 ? `− ${fmt(tvaNette)}` : `Crédit ${fmt(Math.abs(tvaNette))}`;
+      document.getElementById('tva-amount').style.color = tvaNette > 0 ? '#e65100' : '#34c759';
+
+      // Historique mensuel
+      document.getElementById('month-grid').innerHTML = data.monthly_summary.map(ms => {
+        const [my, mm] = ms.month.split('-').map(Number);
+        const net = ms.net;
+        return `<div class="month-card">
+          <div class="mc-month">${MONTH_NAMES[mm-1]} ${my}</div>
+          <div class="mc-net ${net >= 0 ? 'pos' : 'neg'}">${net >= 0 ? '+' : ''}${fmt(net)}</div>
+          <div class="mc-detail">+${fmt(ms.total_credit)} / −${fmt(ms.total_debit)}</div>
+        </div>`;
+      }).join('');
+
+      // Récurrences débits
+      const dt = document.getElementById('recur-debits');
+      dt.innerHTML = `<div class="recur-row header"><span>Libellé</span><span>Montant moyen</span><span>Nb mois</span></div>` +
+        recurWithoutTVA.map(d => `
+        <div class="recur-row">
+          <div><div class="rr-label">${d.label}</div><div class="rr-day">vers le ${d.avg_day}</div></div>
+          <div class="rr-amount debit">− ${fmt(d.avg_amount)}</div>
+          <div class="rr-seen">${d.months_seen} mois</div>
+        </div>`).join('');
+
+      // Récurrences crédits
+      const ct = document.getElementById('recur-credits');
+      ct.innerHTML = `<div class="recur-row header"><span>Client</span><span>Montant moyen</span><span>Nb mois</span></div>` +
+        data.recurring_credits.map(c => `
+        <div class="recur-row">
+          <div><div class="rr-label">${c.label}</div><div class="rr-day">vers le ${c.avg_day}</div></div>
+          <div class="rr-amount credit">+ ${fmt(c.avg_amount)}</div>
+          <div class="rr-seen">${c.months_seen} mois</div>
+        </div>`).join('');
+
+      document.getElementById('results').style.display = 'block';
+      document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+
+    function setAmount(id, val) {
+      const el = document.getElementById(id);
+      el.textContent = fmt(Math.abs(val));
+      el.className = 'fc-amount ' + (val > 500 ? 'positive' : val > 0 ? 'warning' : 'negative');
+      if (val < 0) el.textContent = '− ' + fmt(Math.abs(val));
+    }
+
+    function showError(msg) {
+      const el = document.getElementById('error-msg');
+      el.textContent = msg; el.style.display = 'block';
+    }
+    function hideError() { document.getElementById('error-msg').style.display = 'none'; }
+  </script>
+</body>
+</html>

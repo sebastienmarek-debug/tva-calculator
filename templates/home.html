@@ -31,6 +31,7 @@
       border: 2px solid transparent;
     }
     .tool-card:hover { transform: translateY(-4px); box-shadow: 0 8px 28px rgba(0,0,0,0.12); border-color: #e5e5ea; }
+    .tool-card.wide { grid-column: 1 / -1; }
 
     .tool-icon { font-size: 2.5rem; }
     .tool-name { font-size: 1.15rem; font-weight: 700; }
@@ -39,8 +40,14 @@
       display: inline-block; padding: 3px 10px; border-radius: 20px;
       font-size: 0.75rem; font-weight: 500; align-self: flex-start; margin-top: auto;
     }
-    .badge-tva { background: #d0e8ff; color: #0040a0; }
+    .badge-tva  { background: #d0e8ff; color: #0040a0; }
     .badge-fact { background: #d1f2dc; color: #1a7f3c; }
+    .badge-trso { background: #f3e5f5; color: #7b1fa2; }
+
+    @media (max-width: 600px) {
+      .tools { grid-template-columns: 1fr; }
+      .tool-card.wide { grid-column: 1; }
+    }
 
     footer { margin-top: auto; padding: 2rem; color: #c7c7cc; font-size: 0.8rem; text-align: center; }
   </style>
@@ -67,6 +74,13 @@
         <div class="tool-name">Calculateur de facturation</div>
         <div class="tool-desc">Génère ta facturation mensuelle depuis ton export Toggl Track. Applique automatiquement les taux horaires par client et les forfaits mensuels.</div>
         <span class="tool-badge badge-fact">Toggl Track</span>
+      </a>
+
+      <a href="/tresorerie" class="tool-card wide">
+        <div class="tool-icon">📈</div>
+        <div class="tool-name">Prévision de trésorerie</div>
+        <div class="tool-desc">Donne tes relevés Crédit Mutuel des 6 derniers mois + ton solde actuel. L'outil détecte automatiquement tes dépenses récurrentes (salaires, charges, abonnements…), croise avec tes revenus Toggl et calcule ta trésorerie prévisionnelle en début et fin de mois prochain — TVA nette à payer incluse.</div>
+        <span class="tool-badge badge-trso">Tréso · Relevés + Toggl</span>
       </a>
     </div>
   </div>
