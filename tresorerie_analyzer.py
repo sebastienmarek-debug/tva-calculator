@@ -35,6 +35,26 @@ NORMALIZE_PATTERNS = [
     (r"APRIL\s+SANTE|APRIL\s+PRE", "April Santé (mutuelle)"),
 ]
 
+# Virements clients (revenus) à exclure des débits récurrents
+# Ces entrées sont des encaissements clients trackés dans Toggl
+REVENUE_PATTERNS = [
+    r"DREAM\s*ACT",
+    r"MEET\s*YOUR\s*MARKET",
+    r"JOIA\s*TIME",
+    r"AGENCE\s*TAPIS\s*ROUGE",
+    r"GRAVELAT",
+    r"KATANA",
+    r"CLJ\s*BUSINESS",
+    r"LYDIA\s*SOLUTIONS",
+    r"APR\s*MOTOR",
+    r"GENICADO",
+]
+
+def is_revenue(label: str) -> bool:
+    """Retourne True si ce libellé est un encaissement client (à exclure des débits)."""
+    up = label.upper()
+    return any(re.search(p, up) for p in REVENUE_PATTERNS)
+
 def normalize_label(label: str) -> str:
     """Normalise un libellé pour regrouper les transactions similaires."""
     # Chercher dans le libellé COMPLET (base + marchand après |)
@@ -107,7 +127,7 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
         month_key = f"{d.year}-{d.month:02d}"
         norm = normalize_label(tx.label)
 
-        if tx.debit and tx.debit > 0:
+        if tx.debit and tx.debit > 0 and not is_revenue(tx.label):
             debit_groups[norm][month_key].append(tx.debit)
             debit_days[norm].append(d.day)
         if tx.credit and tx.credit > 0:
@@ -123,30 +143,32 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
             n_seen = len(months_data)
             if n_seen < threshold:
                 continue
-            all_amounts = [a for amts in months_data.values() for a in amts]
-            avg_amount = sum(all_amounts) / len(all_amounts)
-            # Utiliser le montant du dernier mois comme meilleure estimation
-            last_month_key = sorted(months_data.keys())[-1]
-            last_amount = round(sum(months_data[last_month_key]) / len(months_data[last_month_key]), 2)
+
+            # Agréger par mois (somme de toutes les entrées du même mois)
+            monthly_totals = {m: sum(amts) for m, amts in months_data.items()}
+            sorted_months = sorted(monthly_totals.keys())
+            totals = [monthly_totals[m] for m in sorted_months]
+
+            # Médiane comme montant de référence
+            s = sorted(totals)
+            mid = len(s) // 2
+            median = (s[mid - 1] + s[mid]) / 2 if len(s) % 2 == 0 else s[mid]
+
+            # Comptage des mois "stables" : dans ±30% du médian
+            stable_months = sum(1 for t in totals if median * 0.70 <= t <= median * 1.30)
+            if stable_months < threshold:
+                continue  # montants trop variables → pas une vraie récurrence
+
             avg_day = round(sum(days_map[label]) / len(days_map[label]))
 
-            # Écarter les montants très irréguliers (écart-type > 60% de la moyenne)
-            # → probablement pas une vraie récurrence régulière
-            if len(all_amounts) >= 3:
-                mean = avg_amount
-                std = (sum((x - mean)**2 for x in all_amounts) / len(all_amounts)) ** 0.5
-                if std / mean > 0.60:
-                    # Garder quand même mais signaler avec la valeur la plus récente
-                    pass  # on garde, l'utilisateur verra les montants
-
             result.append({
-                "label":       label,
-                "avg_amount":  round(avg_amount, 2),
-                "estimated_amount": last_amount,   # montant retenu pour la prévision
-                "avg_day":     avg_day,
-                "months_seen": n_seen,
-                "last_amount": last_amount,
-                "amounts":     [round(a, 2) for a in all_amounts[-6:]],
+                "label":            label,
+                "avg_amount":       round(sum(totals) / len(totals), 2),
+                "estimated_amount": round(median, 2),  # médian = meilleure estimation
+                "avg_day":          avg_day,
+                "months_seen":      n_seen,
+                "last_amount":      round(totals[-1], 2),
+                "amounts":          [round(t, 2) for t in totals[-6:]],
             })
         result.sort(key=lambda x: x["estimated_amount"], reverse=True)
         return result
