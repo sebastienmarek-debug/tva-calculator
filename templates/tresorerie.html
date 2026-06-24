@@ -469,9 +469,10 @@
       const soldeFinMoisCourant  = solde + facturesAvantFinMois - totalRestant - tvaEncoreDueFinMois;
 
       // ── TVA à provisionner pour le mois Toggl ──
-      // = TVA collectée sur revenus - TVA déductible sur charges récurrentes
-      const tvaDedCharges = charges.reduce((s, d) => s + (d.tva_deductible || 0), 0);
+      // TVA collectée = 20% des revenus HT Toggl
+      // TVA déductible = moyenne mensuelle calculée sur les relevés PDF (toutes charges confondues)
       const tvaCollectee  = revTTC / 1.20 * 0.20;
+      const tvaDedCharges = data.tva_info.deductible;   // déductible réel du dernier mois analysé
       const tvaAProvisionner = Math.max(0, tvaCollectee - tvaDedCharges);
 
       // ── Fin de mois prochain ──
@@ -529,8 +530,11 @@
 
       // TVA à provisionner
       document.getElementById('fc-tva-prov').textContent = fmt(tvaAProvisionner);
+      const tvaMonth = data.tva_info.month;
+      const [ty2, tm2] = tvaMonth ? tvaMonth.split('-').map(Number) : [0,0];
+      const tvaMonthLabel = tvaMonth ? MONTH_NAMES[tm2-1]+' '+ty2 : 'dernier mois';
       document.getElementById('fc-tva-prov-sub').textContent =
-        `TVA collectée ${fmt(tvaCollectee)} − déductible charges ${fmt(tvaDedCharges)}`;
+        `Collectée ${fmt(tvaCollectee)} − déductible ${fmt(tvaDedCharges)} (base ${tvaMonthLabel})`;
 
       // Toutes les charges
       const dt = document.getElementById('recur-debits');
