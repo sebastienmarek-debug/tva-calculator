@@ -35,6 +35,22 @@ NORMALIZE_PATTERNS = [
     (r"APRIL\s+SANTE|APRIL\s+PRE", "April Santé (mutuelle)"),
 ]
 
+# Charges avec TVA déductible (label normalisé → taux TVA)
+TVA_DEDUCTIBLE_RATES = {
+    "Orange (abonnement fibre)": 0.20,
+    "OpenAI / ChatGPT":          0.20,
+    "Microsoft":                 0.20,
+    "Adobe":                     0.20,
+    "Canva":                     0.20,
+    "CapCut":                    0.20,
+    "Cybeary (stockage)":        0.20,
+    "Autoroutes (péages)":       0.20,
+    "Tasker":                    0.20,
+    "INPI":                      0.20,
+    "Wix":                       0.20,
+    "Airbnb":                    0.10,
+}
+
 
 def normalize_label(label: str) -> str:
     """Normalise un libellé pour regrouper les transactions similaires."""
@@ -143,14 +159,17 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
 
             avg_day = round(sum(days_map[label]) / len(days_map[label]))
 
+            tva_rate = TVA_DEDUCTIBLE_RATES.get(label, 0.0)
             result.append({
                 "label":            label,
                 "avg_amount":       round(sum(totals) / len(totals), 2),
-                "estimated_amount": round(median, 2),  # médian = meilleure estimation
+                "estimated_amount": round(median, 2),
                 "avg_day":          avg_day,
                 "months_seen":      n_seen,
                 "last_amount":      round(totals[-1], 2),
                 "amounts":          [round(t, 2) for t in totals[-6:]],
+                "tva_rate":         tva_rate,
+                "tva_deductible":   round(round(median, 2) * tva_rate / (1 + tva_rate), 2),
             })
         result.sort(key=lambda x: x["estimated_amount"], reverse=True)
         return result
@@ -195,6 +214,10 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
 
     tva_net = round(tva_collected - tva_deductible, 2)
 
+    # Jour habituel du prélèvement DGFIP (pour savoir s'il est déjà passé)
+    dgfip_days = debit_days.get("DGFIP (TVA / impôts)", [])
+    dgfip_avg_day = round(sum(dgfip_days) / len(dgfip_days)) if dgfip_days else 28
+
     return {
         "months_analyzed":  months_sorted,
         "n_months":         n_months,
@@ -202,10 +225,11 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
         "recurring_credits": recurring_credits,
         "monthly_summary":  monthly_summary,
         "tva_info": {
-            "collected":   round(tva_collected, 2),
-            "deductible":  round(tva_deductible, 2),
-            "net_due":     tva_net,
-            "month":       last_month or "",
+            "collected":     round(tva_collected, 2),
+            "deductible":    round(tva_deductible, 2),
+            "net_due":       tva_net,
+            "month":         last_month or "",
+            "dgfip_avg_day": dgfip_avg_day,
         },
         "avg_monthly_debit":  round(sum(m["total_debit"]  for m in monthly_summary) / max(len(monthly_summary), 1), 2),
         "avg_monthly_credit": round(sum(m["total_credit"] for m in monthly_summary) / max(len(monthly_summary), 1), 2),

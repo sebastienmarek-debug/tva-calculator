@@ -72,6 +72,7 @@
     .fc-amount.positive { color: #34c759; }
     .fc-amount.warning  { color: #ff9500; }
     .fc-amount.negative { color: #ff3b30; }
+    .fc-amount.neutral  { color: #1d1d1f; }
     .fc-sub { font-size: 0.8rem; color: #6e6e73; margin-top: 0.4rem; }
 
     /* Timeline TVA */
@@ -185,6 +186,21 @@
         <div id="toggl-rev-result" style="font-size:0.85rem;color:#34c759;display:none"></div>
       </div>
 
+      <!-- Factures en attente -->
+      <div class="panel-title" style="margin-top:1rem">📬 Factures en attente de règlement</div>
+      <div class="fields-row">
+        <div class="field-group">
+          <label>Montant TTC à recevoir (€)</label>
+          <input type="number" id="factures-attente" placeholder="ex: 840" step="0.01" value="0">
+          <div class="field-hint">Factures du mois précédent non encore encaissées</div>
+        </div>
+        <div class="field-group">
+          <label>Date de réception estimée</label>
+          <input type="date" id="factures-date">
+          <div class="field-hint">Pour savoir si elles arrivent avant ou après les charges</div>
+        </div>
+      </div>
+
       <div class="error-msg" id="error-msg"></div>
 
       <button class="btn-analyze" onclick="analyze()" id="btn-analyze">
@@ -195,59 +211,68 @@
     <!-- ── Résultats ── -->
     <div id="results">
 
-      <!-- Forecast début / fin mois -->
-      <div class="section-title">📊 Prévision — <span id="mois-label">mois prochain</span></div>
+      <!-- Ce mois-ci -->
+      <div class="section-title">📅 Ce mois-ci — jusqu'au <span id="fin-mois-label"></span></div>
       <div class="forecast-grid">
         <div class="forecast-card">
-          <div class="fc-label">💰 Solde début de mois</div>
-          <div class="fc-amount" id="fc-debut">—</div>
-          <div class="fc-sub" id="fc-debut-sub"></div>
+          <div class="fc-label">💰 Solde actuel</div>
+          <div class="fc-amount positive" id="fc-solde-actuel">—</div>
+          <div class="fc-sub" id="fc-solde-sub"></div>
         </div>
         <div class="forecast-card">
-          <div class="fc-label">🏁 Solde fin de mois estimé</div>
+          <div class="fc-label">🏁 Solde estimé fin de mois</div>
+          <div class="fc-amount" id="fc-fin-mois">—</div>
+          <div class="fc-sub" id="fc-fin-mois-sub"></div>
+        </div>
+      </div>
+
+      <!-- Détail charges restantes ce mois -->
+      <div class="section-title">⏳ Charges encore à passer ce mois</div>
+      <div class="recur-table" id="charges-restantes">
+        <div class="recur-row header"><span>Libellé</span><span>Jour prévu</span><span>Montant</span></div>
+      </div>
+
+      <!-- Mois prochain -->
+      <div class="section-title" style="margin-top:1.5rem">📊 Prévision — <span id="mois-label">mois prochain</span></div>
+      <div class="forecast-grid">
+        <div class="forecast-card">
+          <div class="fc-label">📥 Encaissements TTC</div>
+          <div class="fc-amount positive" id="fc-encaiss">—</div>
+          <div class="fc-sub">Revenus Toggl TTC</div>
+        </div>
+        <div class="forecast-card">
+          <div class="fc-label">📤 Charges récurrentes</div>
+          <div class="fc-amount negative" id="fc-decaiss">—</div>
+          <div class="fc-sub">Total charges fixes mois prochain</div>
+        </div>
+      </div>
+      <div class="forecast-grid">
+        <div class="forecast-card">
+          <div class="fc-label">🏁 Solde fin de mois prochain</div>
           <div class="fc-amount" id="fc-fin">—</div>
           <div class="fc-sub" id="fc-fin-sub"></div>
         </div>
-      </div>
-
-      <!-- Détail flux -->
-      <div class="forecast-grid">
         <div class="forecast-card">
-          <div class="fc-label">📥 Encaissements prévus</div>
-          <div class="fc-amount positive" id="fc-encaiss">—</div>
-          <div class="fc-sub">Revenus TTC (HT + TVA collectée)</div>
-        </div>
-        <div class="forecast-card">
-          <div class="fc-label">📤 Décaissements récurrents</div>
-          <div class="fc-amount negative" id="fc-decaiss">—</div>
-          <div class="fc-sub">Charges récurrentes identifiées</div>
+          <div class="fc-label">🔒 TVA à provisionner</div>
+          <div class="fc-amount warning" id="fc-tva-prov">—</div>
+          <div class="fc-sub" id="fc-tva-prov-sub"></div>
         </div>
       </div>
 
-      <!-- TVA due -->
-      <div class="tva-banner" id="tva-banner">
-        <div class="tva-icon">🧾</div>
+      <!-- TVA mois précédent (si pas encore prélevée) -->
+      <div class="tva-banner" id="tva-banner" style="display:none">
+        <div class="tva-icon">⚠️</div>
         <div class="tva-text">
-          <div class="tva-title">TVA à payer (mois précédent) — vers le 19 du mois</div>
+          <div class="tva-title" id="tva-banner-title">TVA mois précédent — prélèvement pas encore passé</div>
           <div class="tva-detail" id="tva-detail">—</div>
         </div>
         <div class="tva-amount" id="tva-amount">—</div>
       </div>
 
       <!-- Dépenses récurrentes -->
-      <div class="section-title">🔄 Dépenses récurrentes identifiées</div>
+      <div class="section-title">🔄 Toutes les charges récurrentes</div>
       <div class="recur-table" id="recur-debits">
-        <div class="recur-row header">
-          <span>Libellé</span><span>Montant moyen</span><span>Nb mois</span>
-        </div>
-      </div>
-
-      <!-- Recettes récurrentes -->
-      <div class="section-title">📈 Recettes récurrentes identifiées</div>
-      <div class="recur-table" id="recur-credits">
-        <div class="recur-row header">
-          <span>Client</span><span>Montant moyen</span><span>Nb mois</span>
-        </div>
+        <div class="recur-row header"><span>Libellé</span><span>Estimation</span><span>Nb mois</span></div>
       </div>
 
     </div><!-- /results -->
@@ -393,7 +418,7 @@
       btn.disabled = false; btn.textContent = 'Calculer la prévision';
       if (data.error) { showError(data.error); return; }
 
-      // Revenus
+      // Revenus mois prochain
       let revHT = 0;
       if (revMode === 'toggl') {
         revHT = togglRevHT;
@@ -401,75 +426,127 @@
         revHT = parseFloat(document.getElementById('rev-ht').value) || 0;
       }
       const revTTC = revHT * 1.20;
-      const revTVAcol = revHT * 0.20;
 
-      // TVA nette à payer (du mois analysé)
-      const tvaNette = data.tva_info.net_due;
+      // Factures en attente
+      const facturesAttente  = parseFloat(document.getElementById('factures-attente').value) || 0;
+      const facturesDateStr  = document.getElementById('factures-date').value;
+      const facturesDate     = facturesDateStr ? new Date(facturesDateStr) : null;
 
-      // Dépenses récurrentes (hors DGFIP TVA qu'on traite séparément)
-      const recurWithoutTVA = data.recurring_debits.filter(d => !d.label.includes('DGFIP'));
-      // Utiliser estimated_amount (dernier mois connu) pour la prévision
-      const totalRecurDebits = recurWithoutTVA.reduce((s, d) => s + (d.estimated_amount || d.avg_amount), 0);
-
-      // Prévision
-      const debutMois  = solde;
-      const finMois    = debutMois + revTTC - totalRecurDebits - Math.max(0, tvaNette);
-
-      renderResults({ data, solde, debutMois, finMois, revTTC, revTVAcol, totalRecurDebits, tvaNette, recurWithoutTVA });
+      renderResults({ data, solde, revTTC, facturesAttente, facturesDate });
     }
 
-    function renderResults({ data, solde, debutMois, finMois, revTTC, revTVAcol, totalRecurDebits, tvaNette, recurWithoutTVA }) {
+    function renderResults({ data, solde, revTTC, facturesAttente, facturesDate }) {
+      const today   = new Date();
+      const todayDay = today.getDate();
+      const lastDayOfMonth = new Date(today.getFullYear(), today.getMonth() + 1, 0).getDate();
       const moisPrev = document.getElementById('mois-prevision').value;
-      const [y, m] = moisPrev ? moisPrev.split('-').map(Number) : [0, 0];
-      const moisLabel = moisPrev ? `${MONTH_NAMES[m-1]} ${y}` : 'Mois prochain';
+      const [py, pm] = moisPrev ? moisPrev.split('-').map(Number) : [today.getFullYear(), today.getMonth() + 2];
+      const moisLabel = `${MONTH_NAMES[pm-1]} ${py}`;
+
       document.getElementById('mois-label').textContent = moisLabel;
+      document.getElementById('fin-mois-label').textContent =
+        `${lastDayOfMonth} ${MONTH_NAMES[today.getMonth()]} ${today.getFullYear()}`;
 
-      // Forecast cards
-      setAmount('fc-debut', debutMois);
-      document.getElementById('fc-debut-sub').textContent = `Solde actuel + encaissements en attente`;
+      // ── Charges récurrentes (hors DGFIP) ──
+      const charges = data.recurring_debits.filter(d => !d.label.includes('DGFIP'));
 
-      setAmount('fc-fin', finMois);
-      document.getElementById('fc-fin-sub').textContent =
-        `${fmt(revTTC)} encaissés − ${fmt(totalRecurDebits)} charges − ${fmt(Math.max(0,tvaNette))} TVA`;
+      // Partitionnement : passées vs à venir ce mois
+      const chargesRestantes = charges.filter(d => d.avg_day > todayDay);
+      const chargesPassees   = charges.filter(d => d.avg_day <= todayDay);
+      const totalRestant     = chargesRestantes.reduce((s, d) => s + d.estimated_amount, 0);
+      const totalPasse       = chargesPassees.reduce((s,   d) => s + d.estimated_amount, 0);
+      const totalCharges     = charges.reduce((s, d) => s + d.estimated_amount, 0);
 
+      // ── TVA mois précédent : est-elle déjà prélevée ce mois ? ──
+      const dgfipDay    = data.tva_info.dgfip_avg_day || 28;
+      const tvaMoisPrec = Math.max(0, data.tva_info.net_due);
+      const tvaDejaPrelevee = todayDay > dgfipDay;  // si on est après le jour habituel du DGFIP
+
+      // ── Fin de mois courant ──
+      // Solde + factures en attente (si reçues avant fin mois) - charges restantes - TVA si pas encore prélevée
+      const facturesAvantFinMois = (!facturesDate || facturesDate <= new Date(today.getFullYear(), today.getMonth(), lastDayOfMonth)) ? facturesAttente : 0;
+      const tvaEncoreDueFinMois  = tvaDejaPrelevee ? 0 : tvaMoisPrec;
+      const soldeFinMoisCourant  = solde + facturesAvantFinMois - totalRestant - tvaEncoreDueFinMois;
+
+      // ── TVA à provisionner pour le mois Toggl ──
+      // = TVA collectée sur revenus - TVA déductible sur charges récurrentes
+      const tvaDedCharges = charges.reduce((s, d) => s + (d.tva_deductible || 0), 0);
+      const tvaCollectee  = revTTC / 1.20 * 0.20;
+      const tvaAProvisionner = Math.max(0, tvaCollectee - tvaDedCharges);
+
+      // ── Fin de mois prochain ──
+      const finMoisProchain = soldeFinMoisCourant + revTTC - totalCharges - tvaAProvisionner;
+
+      // ── RENDU ──
+
+      // Ce mois
+      setAmount('fc-solde-actuel', solde);
+      document.getElementById('fc-solde-sub').textContent =
+        facturesAvantFinMois > 0 ? `+ ${fmt(facturesAvantFinMois)} factures à recevoir` : 'Solde compte pro aujourd\'hui';
+
+      setAmount('fc-fin-mois', soldeFinMoisCourant);
+      const parts = [];
+      if (facturesAvantFinMois > 0) parts.push(`+${fmt(facturesAvantFinMois)} factures`);
+      if (totalRestant > 0) parts.push(`−${fmt(totalRestant)} charges restantes`);
+      if (tvaEncoreDueFinMois > 0) parts.push(`−${fmt(tvaEncoreDueFinMois)} TVA DGFIP`);
+      document.getElementById('fc-fin-mois-sub').textContent = parts.join(' · ') || '—';
+
+      // Charges restantes ce mois
+      const crEl = document.getElementById('charges-restantes');
+      if (chargesRestantes.length === 0) {
+        crEl.innerHTML = `<div style="padding:0.75rem 1.25rem;color:#6e6e73;font-size:0.85rem">✓ Toutes les charges de ce mois sont déjà passées</div>`;
+      } else {
+        crEl.innerHTML = `<div class="recur-row header"><span>Libellé</span><span>Vers le</span><span>Montant</span></div>` +
+          chargesRestantes.sort((a,b) => a.avg_day - b.avg_day).map(d => `
+          <div class="recur-row">
+            <div class="rr-label">${d.label}</div>
+            <div class="rr-day" style="font-size:0.9rem">le ${d.avg_day}</div>
+            <div class="rr-amount debit">− ${fmt(d.estimated_amount)}</div>
+          </div>`).join('');
+      }
+
+      // TVA mois précédent non encore prélevée
+      const tvaBanner = document.getElementById('tva-banner');
+      if (!tvaDejaPrelevee && tvaMoisPrec > 0) {
+        tvaBanner.style.display = 'flex';
+        const tvaMonth = data.tva_info.month;
+        const [ty, tm] = tvaMonth ? tvaMonth.split('-').map(Number) : [0,0];
+        document.getElementById('tva-banner-title').textContent =
+          `TVA ${tvaMonth ? MONTH_NAMES[tm-1]+' '+ty : 'mois précédent'} — prélèvement vers le ${dgfipDay} (pas encore passé)`;
+        document.getElementById('tva-detail').textContent =
+          `Collectée ${fmt(data.tva_info.collected)} − Déductible ${fmt(data.tva_info.deductible)}`;
+        document.getElementById('tva-amount').textContent = `− ${fmt(tvaMoisPrec)}`;
+      } else {
+        tvaBanner.style.display = 'none';
+      }
+
+      // Mois prochain
       document.getElementById('fc-encaiss').textContent = fmt(revTTC);
-      document.getElementById('fc-decaiss').textContent = fmt(totalRecurDebits);
+      document.getElementById('fc-decaiss').textContent = fmt(totalCharges);
+      setAmount('fc-fin', finMoisProchain);
+      document.getElementById('fc-fin-sub').textContent =
+        `${fmt(soldeFinMoisCourant)} report + ${fmt(revTTC)} TTC − ${fmt(totalCharges)} charges − ${fmt(tvaAProvisionner)} TVA`;
 
-      // TVA banner
-      const tvaMonth = data.tva_info.month;
-      const [ty, tm] = tvaMonth ? tvaMonth.split('-').map(Number) : [0,0];
-      document.getElementById('tva-detail').textContent =
-        `TVA collectée ${fmt(data.tva_info.collected)} − TVA déductible ${fmt(data.tva_info.deductible)}` +
-        (tvaMonth ? ` (${MONTH_NAMES[tm-1]} ${ty})` : '');
-      document.getElementById('tva-amount').textContent = tvaNette > 0 ? `− ${fmt(tvaNette)}` : `Crédit ${fmt(Math.abs(tvaNette))}`;
-      document.getElementById('tva-amount').style.color = tvaNette > 0 ? '#e65100' : '#34c759';
+      // TVA à provisionner
+      document.getElementById('fc-tva-prov').textContent = fmt(tvaAProvisionner);
+      document.getElementById('fc-tva-prov-sub').textContent =
+        `TVA collectée ${fmt(tvaCollectee)} − déductible charges ${fmt(tvaDedCharges)}`;
 
-      // Récurrences débits
+      // Toutes les charges
       const dt = document.getElementById('recur-debits');
-      dt.innerHTML = `<div class="recur-row header"><span>Libellé</span><span>Estimation mois prochain</span><span>Nb mois</span></div>` +
-        recurWithoutTVA.map(d => {
-          const est = d.estimated_amount || d.avg_amount;
-          const showAvg = Math.abs(est - d.avg_amount) > 1;
+      dt.innerHTML = `<div class="recur-row header"><span>Libellé</span><span>Estimation</span><span>Passage</span></div>` +
+        charges.sort((a,b) => a.avg_day - b.avg_day).map(d => {
+          const passed = d.avg_day <= todayDay;
           return `
           <div class="recur-row">
             <div>
               <div class="rr-label">${d.label}</div>
-              <div class="rr-day">vers le ${d.avg_day}${showAvg ? ` · moy. ${fmt(d.avg_amount)}` : ''}</div>
+              <div class="rr-day">${passed ? '✓ passé' : `vers le ${d.avg_day}`}${d.tva_deductible > 0 ? ` · TVA déd. ${fmt(d.tva_deductible)}` : ''}</div>
             </div>
-            <div class="rr-amount debit">− ${fmt(est)}</div>
+            <div class="rr-amount debit" style="${passed ? 'opacity:0.45' : ''}">− ${fmt(d.estimated_amount)}</div>
             <div class="rr-seen">${d.months_seen} mois</div>
           </div>`;
         }).join('');
-
-      // Récurrences crédits
-      const ct = document.getElementById('recur-credits');
-      ct.innerHTML = `<div class="recur-row header"><span>Client</span><span>Montant moyen</span><span>Nb mois</span></div>` +
-        data.recurring_credits.map(c => `
-        <div class="recur-row">
-          <div><div class="rr-label">${c.label}</div><div class="rr-day">vers le ${c.avg_day}</div></div>
-          <div class="rr-amount credit">+ ${fmt(c.avg_amount)}</div>
-          <div class="rr-seen">${c.months_seen} mois</div>
-        </div>`).join('');
 
       document.getElementById('results').style.display = 'block';
       document.getElementById('results').scrollIntoView({ behavior: 'smooth', block: 'start' });
@@ -477,9 +554,8 @@
 
     function setAmount(id, val) {
       const el = document.getElementById(id);
-      el.textContent = fmt(Math.abs(val));
-      el.className = 'fc-amount ' + (val > 500 ? 'positive' : val > 0 ? 'warning' : 'negative');
-      if (val < 0) el.textContent = '− ' + fmt(Math.abs(val));
+      el.textContent = val < 0 ? '− ' + fmt(Math.abs(val)) : fmt(val);
+      el.className = 'fc-amount ' + (val > 1000 ? 'positive' : val > 0 ? 'warning' : 'negative');
     }
 
     function showError(msg) {
