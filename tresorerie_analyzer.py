@@ -29,23 +29,29 @@ NORMALIZE_PATTERNS = [
     (r"WIX", "Wix"),
     (r"AIRBNB", "Airbnb"),
     (r"SNCF|LMW\*SNCF", "SNCF"),
-    (r"INPI", "INPI"),
+    (r"INPI|COURBEVOIE.*INPI|INPI.*VADS", "INPI"),
+    (r"SAGGART|ADOBE", "Adobe"),
+    (r"DUBLIN|MICROSOFT|MSBILL", "Microsoft"),
+    (r"APRIL\s+SANTE|APRIL\s+PRE", "April Santé (mutuelle)"),
 ]
 
 def normalize_label(label: str) -> str:
     """Normalise un libellé pour regrouper les transactions similaires."""
-    up = label.upper()
+    # Chercher dans le libellé COMPLET (base + marchand après |)
+    full_up = label.upper()
     for pattern, name in NORMALIZE_PATTERNS:
-        if re.search(pattern, up):
+        if re.search(pattern, full_up):
             return name
-    # Fallback : garder les premiers mots significatifs
+    # Fallback : utiliser la partie avant | pour le nom affiché
+    base = label.split(' | ')[0].strip()
+    up = base.upper()
     clean = re.sub(r'\b(PRLV|SEPA|VIR|INST|PAIEMENT|CB|SA|SAS|SARL)\b', '', up)
     clean = re.sub(r'\d{4,}', '', clean)
     clean = re.sub(r'\s+', ' ', clean).strip()
-    return clean[:50] if clean else label[:50]
+    return clean[:50] if clean else base[:50]
 
 
-def parse_date(tx: Transaction) -> datetime | None:
+def parse_date(tx: Transaction):
     try:
         return datetime.strptime(tx.date, "%d/%m/%Y")
     except Exception:
@@ -108,7 +114,10 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
             credit_groups[norm][month_key].append(tx.credit)
             credit_days[norm].append(d.day)
 
-    def build_recurring(groups, days_map, threshold=2):
+    def build_recurring(groups, days_map, threshold=None):
+        # "Tous les mois" : présent dans au moins n_months-1 mois (tolérance 1 absence)
+        if threshold is None:
+            threshold = max(2, n_months - 1)
         result = []
         for label, months_data in groups.items():
             n_seen = len(months_data)
@@ -116,20 +125,34 @@ def analyze_cash_flow(file_paths: list[str]) -> dict:
                 continue
             all_amounts = [a for amts in months_data.values() for a in amts]
             avg_amount = sum(all_amounts) / len(all_amounts)
+            # Utiliser le montant du dernier mois comme meilleure estimation
+            last_month_key = sorted(months_data.keys())[-1]
+            last_amount = round(sum(months_data[last_month_key]) / len(months_data[last_month_key]), 2)
             avg_day = round(sum(days_map[label]) / len(days_map[label]))
+
+            # Écarter les montants très irréguliers (écart-type > 60% de la moyenne)
+            # → probablement pas une vraie récurrence régulière
+            if len(all_amounts) >= 3:
+                mean = avg_amount
+                std = (sum((x - mean)**2 for x in all_amounts) / len(all_amounts)) ** 0.5
+                if std / mean > 0.60:
+                    # Garder quand même mais signaler avec la valeur la plus récente
+                    pass  # on garde, l'utilisateur verra les montants
+
             result.append({
                 "label":       label,
                 "avg_amount":  round(avg_amount, 2),
+                "estimated_amount": last_amount,   # montant retenu pour la prévision
                 "avg_day":     avg_day,
                 "months_seen": n_seen,
-                "last_amount": round(all_amounts[-1], 2),
+                "last_amount": last_amount,
                 "amounts":     [round(a, 2) for a in all_amounts[-6:]],
             })
-        result.sort(key=lambda x: x["avg_amount"], reverse=True)
+        result.sort(key=lambda x: x["estimated_amount"], reverse=True)
         return result
 
-    recurring_debits  = build_recurring(debit_groups,  debit_days,  threshold=2)
-    recurring_credits = build_recurring(credit_groups, credit_days, threshold=2)
+    recurring_debits  = build_recurring(debit_groups,  debit_days)
+    recurring_credits = build_recurring(credit_groups, credit_days)
 
     # ── Résumé mensuel ───────────────────────────────────────────
     monthly_summary = []
