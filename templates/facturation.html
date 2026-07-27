@@ -174,7 +174,8 @@
       </div>
       <div class="token-hint">
         Votre token API se trouve dans <a href="https://track.toggl.com/profile" target="_blank">Toggl → Profil → API token</a> (tout en bas de la page).
-        Il est sauvegardé dans votre navigateur.
+        Il est sauvegardé dans votre navigateur. •
+        <a href="#" onclick="refreshMeta(); return false;" id="refresh-meta-link">Actualiser clients/projets</a>
       </div>
       <div class="token-saved" id="token-saved">✓ Token mémorisé dans votre navigateur</div>
     </div>
@@ -245,9 +246,21 @@
       localStorage.setItem(META_KEY, JSON.stringify(meta));
     }
 
-    async function ensureMeta(token) {
+    async function refreshMeta() {
+      const token = document.getElementById('toggl-token').value.trim();
+      if (!token) { showError('Entrez votre token avant d\'actualiser.'); return; }
+      localStorage.removeItem(META_KEY);
+      const link = document.getElementById('refresh-meta-link');
+      link.textContent = 'Actualisation…';
+      const { ok, error } = await ensureMeta(token);
+      link.textContent = ok ? '✓ Clients/projets mis à jour' : '✗ Erreur';
+      if (!ok) showError(error);
+      setTimeout(() => { link.textContent = 'Actualiser clients/projets'; }, 3000);
+    }
+
+    async function ensureMeta(token, forceRefresh = false) {
       const cached = getMeta();
-      if (cached && cached.token === token) return { ok: true, meta: cached };
+      if (!forceRefresh && cached && cached.token === token) return { ok: true, meta: cached };
 
       const res = await fetch('/facturation/toggl/meta', {
         method: 'POST',
