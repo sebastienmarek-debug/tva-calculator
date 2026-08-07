@@ -450,50 +450,22 @@
       document.getElementById('modal-rate-group').style.display = this.value === 'exempt' ? 'none' : '';
     });
 
-    async function saveValidation() {
+    function saveValidation() {
       const id = parseInt(document.getElementById('modal-tx-id').value);
       const status = document.getElementById('modal-status').value;
       const rate = parseFloat(document.getElementById('modal-rate').value);
       const note = document.getElementById('modal-note').value;
       const remember = document.getElementById('modal-remember').checked;
 
-      try {
-        const res = await fetch('/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ session_id: sessionId, id, tva_status: status, tva_rate: rate, note })
-        });
-        const updated = await res.json();
-
-        if (updated.error) {
-          // Session expirée (redémarrage serveur) : on applique la modif localement
-          const idx = transactions.findIndex(t => t.id === id);
-          if (idx >= 0) {
-            const tx = transactions[idx];
-            tx.tva_status = status;
-            tx.tva_rate = rate;
-            tx.note = note;
-            const base = status === 'deductible' ? tx.debit : status === 'collected' ? tx.credit : null;
-            tx.tva_amount = base ? parseFloat((base * rate / (1 + rate)).toFixed(2)) : 0;
-            if (remember) saveRule(tx.label, status, rate, note);
-          }
-        } else {
-          const idx = transactions.findIndex(t => t.id === id);
-          if (idx >= 0) transactions[idx] = updated;
-          if (remember) saveRule(updated.label, status, rate, note);
-        }
-      } catch (e) {
-        // Erreur réseau : appliquer localement sans planter
-        const idx = transactions.findIndex(t => t.id === id);
-        if (idx >= 0) {
-          const tx = transactions[idx];
-          tx.tva_status = status;
-          tx.tva_rate = rate;
-          tx.note = note;
-          const base = status === 'deductible' ? tx.debit : status === 'collected' ? tx.credit : null;
-          tx.tva_amount = base ? parseFloat((base * rate / (1 + rate)).toFixed(2)) : 0;
-          if (remember) saveRule(tx.label, status, rate, note);
-        }
+      const idx = transactions.findIndex(t => t.id === id);
+      if (idx >= 0) {
+        const tx = transactions[idx];
+        tx.tva_status = status;
+        tx.tva_rate   = rate;
+        tx.note       = note;
+        const base = status === 'deductible' ? tx.debit : status === 'collected' ? tx.credit : null;
+        tx.tva_amount = base ? parseFloat((base * rate / (1 + rate)).toFixed(2)) : 0;
+        if (remember) saveRule(tx.label, status, rate, note);
       }
 
       closeModal();
