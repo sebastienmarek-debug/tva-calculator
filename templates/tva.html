@@ -300,34 +300,23 @@
     }
 
     // Applique les règles mémorisées sur les transactions après upload
-    async function applyRules(txs) {
+    function applyRules(txs) {
       const rules = getRules();
       if (!Object.keys(rules).length) return;
-      const toValidate = [];
       for (const tx of txs) {
         const key = ruleKey(tx.label);
-        // Cherche une règle dont la clé est contenue dans la clé du tx ou inversement
         const matchedRule = Object.entries(rules).find(([k]) =>
           key.includes(k) || k.includes(key) || similarity(key, k) > 0.75
         );
         if (matchedRule && tx.tva_status !== matchedRule[1].status) {
-          toValidate.push({ tx, rule: matchedRule[1] });
+          const rule = matchedRule[1];
+          tx.tva_status = rule.status;
+          tx.tva_rate   = rule.rate;
+          tx.note       = (rule.note || '') + ' (règle mémorisée)';
+          const base = rule.status === 'deductible' ? tx.debit
+                     : rule.status === 'collected'  ? tx.credit : null;
+          tx.tva_amount = base ? parseFloat((base * rule.rate / (1 + rule.rate)).toFixed(2)) : 0;
         }
-      }
-      // Applique en batch
-      for (const { tx, rule } of toValidate) {
-        const res = await fetch('/validate', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            session_id: sessionId, id: tx.id,
-            tva_status: rule.status, tva_rate: rule.rate,
-            note: rule.note + ' (règle mémorisée)'
-          })
-        });
-        const updated = await res.json();
-        const idx = transactions.findIndex(t => t.id === tx.id);
-        if (idx >= 0) transactions[idx] = updated;
       }
     }
 
@@ -380,7 +369,7 @@
       if (data.error) { alert(data.error); location.reload(); return; }
       sessionId = data.session_id;
       transactions = data.transactions;
-      await applyRules(transactions);
+      applyRules(transactions);
       renderAll();
     }
 
@@ -415,20 +404,18 @@
       return { collected: 'Collectée', deductible: 'Déductible', exempt: 'Exonéré', pending: 'À valider' }[s] || s;
     }
 
-    async function updateSummary() {
-      const res = await fetch(`/summary/${sessionId}`);
-      const data = await res.json();
-      document.getElementById('tva-collected').textContent = fmt(data.tva_collected);
-      document.getElementById('tva-deductible').textContent = fmt(data.tva_deductible);
-      document.getElementById('tva-due').textContent = fmt(Math.abs(data.tva_due)) + (data.tva_due < 0 ? ' (crédit)' : '');
-      document.getElementById('card-due').classList.toggle('positive', data.tva_due <= 0);
+    function updateSummary() {
+      const tvaCollected  = transactions.reduce((s, t) => s + (t.tva_status === 'collected'  ? (t.tva_amount || 0) : 0), 0);
+      const tvaDeductible = transactions.reduce((s, t) => s + (t.tva_status === 'deductible' ? (t.tva_amount || 0) : 0), 0);
+      const tvaDue        = tvaCollected - tvaDeductible;
+      const pendingCount  = transactions.filter(t => t.tva_status === 'pending').length;
+      document.getElementById('tva-collected').textContent  = fmt(tvaCollected);
+      document.getElementById('tva-deductible').textContent = fmt(tvaDeductible);
+      document.getElementById('tva-due').textContent = fmt(Math.abs(tvaDue)) + (tvaDue < 0 ? ' (crédit)' : '');
+      document.getElementById('card-due').classList.toggle('positive', tvaDue <= 0);
       const alertEl = document.getElementById('pending-alert');
-      if (data.pending_count > 0) {
-        alertEl.style.display = 'flex';
-        document.getElementById('pending-count').textContent = data.pending_count;
-      } else {
-        alertEl.style.display = 'none';
-      }
+      alertEl.style.display = pendingCount > 0 ? 'flex' : 'none';
+      if (pendingCount > 0) document.getElementById('pending-count').textContent = pendingCount;
     }
 
     // ── Filtres ────────────────────────────────────────────────────────────
