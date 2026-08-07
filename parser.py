@@ -1,5 +1,6 @@
 import re
 import pdfplumber
+from collections import defaultdict
 from dataclasses import dataclass
 from typing import Optional
 
@@ -11,7 +12,7 @@ class Transaction:
     label: str
     debit: Optional[float]
     credit: Optional[float]
-    tva_status: str = "unknown"   # collected | deductible | exempt | pending | unknown
+    tva_status: str = "unknown"
     tva_amount: float = 0.0
     tva_rate: float = 0.0
     note: str = ""
@@ -42,12 +43,6 @@ DEDUCTIBLE_PATTERNS = [
     (r"TASKER",                 0.20, "Tasker — TVA déductible 20%"),
 ]
 
-# Credits: wire transfers from clients (Crédit Mutuel puts them in Crédit column)
-CREDIT_KEYWORDS = [
-    "AGENCE TAPIS ROUGE", "CLJ BUSINESS", "LYDIA SOLUTIONS",
-    "KATANA", "GRAVELAT FLEURY",
-]
-
 
 def parse_amount(s: str) -> Optional[float]:
     """Parse European number format: 1.509,40 → 1509.40"""
@@ -57,7 +52,6 @@ def parse_amount(s: str) -> Optional[float]:
     if not s:
         return None
     if "," in s:
-        # European: period = thousands sep, comma = decimal
         s = s.replace(".", "").replace(",", ".")
     try:
         v = float(s)
@@ -66,131 +60,180 @@ def parse_amount(s: str) -> Optional[float]:
         return None
 
 
-def classify_debit(label: str) -> tuple[str, str, float]:
+def classify_debit(label: str) -> tuple:
     """Returns (status, note, tva_rate)"""
     upper = label.upper()
-
     for pattern, note in EXEMPT_PATTERNS:
         if re.search(pattern, upper):
             return "exempt", note, 0.0
-
     for pattern, rate, note in DEDUCTIBLE_PATTERNS:
         if re.search(pattern, upper):
             return "deductible", note, rate
-
     return "pending", "À valider — classification inconnue", 0.20
 
 
-def is_credit_label(label: str) -> bool:
-    upper = label.upper()
-    return any(kw in upper for kw in CREDIT_KEYWORDS)
+def _apply_tva(tx: Transaction) -> Transaction:
+    """Calcule le statut et montant TVA selon débit/crédit."""
+    if tx.credit is not None:
+        tx.tva_status = "collected"
+        tx.tva_rate = 0.20
+        tx.tva_amount = round(tx.credit * 20 / 120, 2)
+        tx.note = "Encaissement client — TVA collectée 20%"
+    elif tx.debit is not None:
+        status, note, rate = classify_debit(tx.label)
+        tx.tva_status = status
+        tx.tva_rate = rate
+        tx.note = note
+        if status == "deductible":
+            tx.tva_amount = round(tx.debit * rate / (1 + rate), 2)
+    else:
+        tx.tva_status = "unknown"
+        tx.note = "Montant non détecté — à vérifier"
+    return tx
+
+
+AMOUNT_RE = re.compile(r"^\d{1,3}(?:\.\d{3})*,\d{2}$")
+DATE_RE   = re.compile(r"^\d{2}/\d{2}/\d{4}$")
+NOISE_RE  = re.compile(
+    r"^(SOLDE|Total|Page|Sous réserve|Information|CAISSE|Pour toute|Médiateur|"
+    r"TVA intra|www\.|ICS\s*:|RUM\s*:|BQE|UR\s+|PK|MD0|B9F|SCTINST|"
+    r"DIJUKK|EXMWQ|VU6|2C2|G033|NN9|220|Vous disposez|Retrouvez|"
+    r"\(GE\)|\(GD\)|<<|0 820|FAX |BIC :|15489|04854|AGENCE SYM)",
+    re.IGNORECASE,
+)
+
+
+def _group_words_by_row(words: list, y_tol: float = 4.0) -> list:
+    """Regroupe les mots par ligne (même y approximatif)."""
+    if not words:
+        return []
+    rows = []
+    words_sorted = sorted(words, key=lambda w: w["top"])
+    current_row = [words_sorted[0]]
+    for w in words_sorted[1:]:
+        if abs(w["top"] - current_row[-1]["top"]) <= y_tol:
+            current_row.append(w)
+        else:
+            rows.append(sorted(current_row, key=lambda w: w["x0"]))
+            current_row = [w]
+    rows.append(sorted(current_row, key=lambda w: w["x0"]))
+    return rows
 
 
 def parse_pdf_reliable(filepath: str) -> list[Transaction]:
+    """
+    Parse un relevé Crédit Mutuel PDF en utilisant les coordonnées X
+    pour distinguer la colonne Débit de la colonne Crédit.
+    """
     transactions = []
-    amount_re = re.compile(r"\d{1,3}(?:\.\d{3})*,\d{2}")
-    date_line_re = re.compile(r"^(\d{2}/\d{2}/\d{4})\s+(\d{2}/\d{2}/\d{4})\s+(.+)$")
-
-    # Noise lines to skip when collecting continuation
-    noise_re = re.compile(
-        r"^(SOLDE|Total|Page|Sous réserve|Information|CAISSE|Pour toute|Médiateur|"
-        r"TVA intra|www\.|ICS\s*:|RUM\s*:|BQE|UR\s+|PK|MD0|B9F|SCTINST|"
-        r"DIJUKK|EXMWQ|VU6|2C2|G033|NN9|220|Vous disposez|Retrouvez|"
-        r"\(GE\)|\(GD\)|<<|0 820|FAX |BIC :|15489|04854|AGENCE SYM)",
-        re.IGNORECASE
-    )
 
     with pdfplumber.open(filepath) as pdf:
-        # Collect all lines across pages
-        all_lines: list[str] = []
         for page in pdf.pages:
-            text = page.extract_text()
-            if text:
-                all_lines.extend(text.split("\n"))
+            words = page.extract_words(x_tolerance=3, y_tolerance=3)
+            if not words:
+                continue
 
-    i = 0
-    while i < len(all_lines):
-        line = all_lines[i].strip()
-        m = date_line_re.match(line)
-        if not m:
-            i += 1
-            continue
+            rows = _group_words_by_row(words)
 
-        date, date_valeur, rest = m.groups()
-        rest = rest.strip()
-
-        # Collect continuation lines (merchant name, reference, etc.)
-        extra_labels = []
-        j = i + 1
-        while j < len(all_lines):
-            nl = all_lines[j].strip()
-            if date_line_re.match(nl):
-                break
-            if nl and not noise_re.match(nl):
-                extra_labels.append(nl)
-            j += 1
-
-        # Extract amounts from rest + continuation lines
-        raw_amounts = amount_re.findall(rest)
-        for el in extra_labels:
-            raw_amounts.extend(amount_re.findall(el))
-
-        parsed_amounts = [v for a in raw_amounts if (v := parse_amount(a)) is not None]
-
-        # Build full label: base label (strip amounts) + first meaningful continuation
-        base_label = amount_re.sub("", rest).strip()
-        # Remove trailing currency codes like "USD", "EUR"
-        base_label = re.sub(r"\s+[A-Z]{3}$", "", base_label).strip()
-
-        # First continuation line that looks like a merchant name (not a reference code)
-        merchant = ""
-        for el in extra_labels:
-            if not amount_re.search(el) and not re.match(r"^[A-Z0-9]{10,}$", el.strip()):
-                candidate = el.strip()
-                if len(candidate) > 3 and not re.match(r"^\d", candidate):
-                    merchant = candidate
+            # ── Trouver les x-centres des colonnes Débit / Crédit ──────────
+            debit_x_center  = None
+            credit_x_center = None
+            for row in rows:
+                texts = [w["text"] for w in row]
+                row_text = " ".join(texts).upper()
+                if "DÉBIT" in row_text or "DEBIT" in row_text:
+                    for w in row:
+                        t = w["text"].upper()
+                        if t in ("DÉBIT", "DEBIT"):
+                            debit_x_center = (w["x0"] + w["x1"]) / 2
+                        elif t in ("CRÉDIT", "CREDIT"):
+                            credit_x_center = (w["x0"] + w["x1"]) / 2
                     break
 
-        full_label = f"{base_label} | {merchant}" if merchant else base_label
+            # ── Regrouper les lignes par transaction (commence par date) ───
+            tx_rows: list[list] = []   # liste de listes de rows
+            for row in rows:
+                texts = [w["text"] for w in row]
+                # Une ligne de transaction commence par deux dates
+                if len(texts) >= 2 and DATE_RE.match(texts[0]) and DATE_RE.match(texts[1]):
+                    tx_rows.append([row])
+                elif tx_rows:
+                    # Continuation si pas du bruit
+                    row_text = " ".join(texts)
+                    if not NOISE_RE.match(row_text.strip()):
+                        tx_rows[-1].append(row)
 
-        # Determine debit/credit
-        debit: Optional[float] = None
-        credit: Optional[float] = None
+            # ── Parser chaque bloc transaction ─────────────────────────────
+            for block in tx_rows:
+                first_row = block[0]
+                texts = [w["text"] for w in first_row]
+                if len(texts) < 2:
+                    continue
 
-        if is_credit_label(full_label):
-            credit = parsed_amounts[0] if parsed_amounts else None
-        else:
-            if len(parsed_amounts) >= 2:
-                # e.g. "20,00 USD  17,07" — last is the EUR amount
-                debit = parsed_amounts[-1]
-            elif parsed_amounts:
-                debit = parsed_amounts[0]
+                date       = texts[0]
+                date_val   = texts[1]
 
-        tx = Transaction(
-            date=date,
-            date_valeur=date_valeur,
-            label=full_label,
-            debit=debit,
-            credit=credit,
-        )
+                # Tous les mots du bloc (hors dates)
+                all_words_in_block = [w for row in block for w in row]
+                amount_words = [w for w in all_words_in_block if AMOUNT_RE.match(w["text"])]
+                label_words  = [w for w in all_words_in_block
+                                if not DATE_RE.match(w["text"])
+                                and not AMOUNT_RE.match(w["text"])]
 
-        if credit is not None:
-            tx.tva_status = "collected"
-            tx.tva_rate = 0.20
-            tx.tva_amount = round(credit * 20 / 120, 2)
-            tx.note = "Encaissement client — TVA collectée 20%"
-        elif debit is not None:
-            status, note, rate = classify_debit(full_label)
-            tx.tva_status = status
-            tx.tva_rate = rate
-            tx.note = note
-            if status == "deductible":
-                tx.tva_amount = round(debit * rate / (1 + rate), 2)
-        else:
-            tx.tva_status = "unknown"
-            tx.note = "Montant non détecté — à vérifier"
+                # Label = mots non-montant, triés par position
+                label_parts = [w["text"] for w in sorted(label_words, key=lambda w: (w["top"], w["x0"]))]
+                # Nettoyer les mots parasites (codes, références)
+                label_clean = []
+                for part in label_parts:
+                    if re.match(r"^[A-Z0-9]{12,}$", part):  # code trop long → skip
+                        continue
+                    label_clean.append(part)
+                label = " ".join(label_clean).strip()
+                if not label:
+                    label = " ".join(label_parts).strip()
 
-        transactions.append(tx)
-        i = j  # skip continuation lines
+                # Construire libellé avec séparateur | pour la partie marchand
+                # (les 2 premières parties = type virement + nom principal)
+                parts = label.split()
+                if len(parts) > 5:
+                    # Essayer de détecter une rupture marchand (ex: "| KATANA")
+                    label = label  # garder tel quel pour l'instant
+
+                # ── Assigner les montants à Débit ou Crédit ────────────────
+                debit:  Optional[float] = None
+                credit: Optional[float] = None
+
+                if debit_x_center and credit_x_center and amount_words:
+                    # Seuil = milieu entre les deux colonnes
+                    mid_x = (debit_x_center + credit_x_center) / 2
+                    for aw in amount_words:
+                        ax = (aw["x0"] + aw["x1"]) / 2
+                        v  = parse_amount(aw["text"])
+                        if v is None:
+                            continue
+                        if ax < mid_x:
+                            # Dans la colonne Débit
+                            if debit is None or v > debit:
+                                debit = v
+                        else:
+                            # Dans la colonne Crédit
+                            if credit is None or v > credit:
+                                credit = v
+                else:
+                    # Fallback : pas de colonnes détectées — on utilise l'ancien heuristic
+                    vals = [parse_amount(w["text"]) for w in amount_words]
+                    vals = [v for v in vals if v is not None]
+                    if vals:
+                        debit = vals[-1]  # prudent : on met en débit par défaut
+
+                tx = Transaction(
+                    date=date,
+                    date_valeur=date_val,
+                    label=label,
+                    debit=debit,
+                    credit=credit,
+                )
+                _apply_tva(tx)
+                transactions.append(tx)
 
     return transactions
